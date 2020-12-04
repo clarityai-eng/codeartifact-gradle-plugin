@@ -1,4 +1,4 @@
-#Codeartifact gradle plugin
+# Codeartifact gradle plugin
 
 Gradle plugin which authenticates against [AWS CodeArtifact](https://aws.amazon.com/es/codeartifact/) using your local credentials to obtain the token.
 
