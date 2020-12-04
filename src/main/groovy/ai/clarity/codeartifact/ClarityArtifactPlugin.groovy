@@ -12,9 +12,7 @@ class ClarityCodeartifactPlugin implements Plugin<Project> {
         setupCodeartifactRepositories(project)
     }
 
-    static GetAuthorizationTokenResponse getAuthorizationToken(url, String profileName) {
-        CodeArtifactUrl codeArtifactUrl = CodeArtifactUrl.of(url)
-
+    static GetAuthorizationTokenResponse getAuthorizationToken(CodeArtifactUrl codeArtifactUrl, String profileName) {
         CodeartifactClient client = CodeartifactClient.builder()
                 .credentialsProvider(ProfileCredentialsProvider.create(profileName))
                 .region(Region.of(codeArtifactUrl.getRegion()))
@@ -29,7 +27,7 @@ class ClarityCodeartifactPlugin implements Plugin<Project> {
         if (!project.repositories.metaClass.respondsTo(project.repositories, 'codeartifact', String, String, Object)) {
             project.logger.debug 'Adding codeartifact(String,String?,Closure?) method to project RepositoryHandler'
             project.repositories.metaClass.codeartifact = { String repoUrl, String profile = 'default', def closure = null ->
-                def token = getAuthorizationToken(repoUrl, profile)
+                def token = getAuthorizationToken(CodeArtifactUrl.of(repoUrl), profile)
                 delegate.maven {
                     url repoUrl
                     credentials {
@@ -38,7 +36,7 @@ class ClarityCodeartifactPlugin implements Plugin<Project> {
                     }
                 }
                 if (closure) {
-                    closure.delegate = del
+                    closure.delegate = delegate
                     closure()
                 }
             }
