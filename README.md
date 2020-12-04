@@ -14,7 +14,7 @@ plugins {
 
 repositories {
     maven {
-        url 'https://clarity-913932804865.d.codeartifact.eu-central-1.amazonaws.com/maven/java/'
+        url 'https://domain-id.d.codeartifact.eu-central-1.amazonaws.com/maven/repository/'
         ai.clarity.codeartifact.ClarityCodeartifactPlugin.setAuthorizationToken(owner, "mgmt")
     }
 }
