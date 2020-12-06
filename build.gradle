@@ -16,6 +16,9 @@ plugins {
     id 'groovy'
 
     id 'maven-publish'
+
+    // Enables to run "gradle checkUpdates" task to check dependency updates
+    id 'name.remal.check-updates' version '1.1.6'
 }
 
 group 'ai.clarity'
