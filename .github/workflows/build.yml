@@ -18,6 +18,13 @@ jobs:
         with:
           java-version: 11
 
+      - name: Cache Gradle packages
+        uses: actions/cache@v2
+        with:
+          path: ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle') }}
+          restore-keys: ${{ runner.os }}-gradle
+
       - name: Build with Gradle
         run: ./gradlew build
 
