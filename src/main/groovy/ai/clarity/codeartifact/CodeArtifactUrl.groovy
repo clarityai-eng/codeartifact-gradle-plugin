@@ -21,7 +21,7 @@ class CodeArtifactUrl {
         this.artifactOwner = artifactOwner
         this.region = region
         this.path = normalizePath(path)
-        this.url = new URL(String.format("https://%s-%s.d.codeartifact.%s.amazonaws.com/%s", artifactDomain, artifactOwner, region, path))
+        this.url = new URL(String.format("https://%s-%s.d.codeartifact.%s.amazonaws.com/%s", artifactDomain, artifactOwner, region, this.path))
     }
 
     static CodeArtifactUrl of(String url) throws MalformedURLException {
