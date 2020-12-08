@@ -19,10 +19,12 @@ plugins {
 
     // Enables to run "gradle checkUpdates" task to check dependency updates
     id 'name.remal.check-updates' version '1.1.6'
+
+    // Enabled to run "gradle release" task to generates application release
+    id 'net.researchgate.release' version '2.8.1'
 }
 
 group 'ai.clarity'
-version '0.0.2'
 
 repositories {
     // Use jcenter for resolving dependencies.
