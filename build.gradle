@@ -70,7 +70,7 @@ check {
 }
 
 pluginBundle {
-    website = 'http://clarity.ai/'
+    website = 'https://github.com/clarityai-eng/codeartifact-gradle-plugin'
     vcsUrl = 'https://github.com/clarityai-eng/codeartifact-gradle-plugin'
     description = 'Login easily to aws codeartifact'
     tags = ['aws', 'codeartifact']

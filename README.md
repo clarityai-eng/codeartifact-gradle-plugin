@@ -9,7 +9,7 @@ In your build.gradle file:
 
 ```
 plugins {
-    id 'ai.clarity.codeartifact' version '0.0.2'
+    id 'ai.clarity.codeartifact' version '0.0.7'
 }
 
 repositories {
