@@ -21,6 +21,9 @@ jobs:
 
       - name: Release Gradle Plugin
         run: |
-          echo "\ngradle.publish.key=${{ secrets.KEY_TEST }}\ngradle.publish.secret=${{ secrets.SECRET_TEST }}\n" >> gradle.properties
+          echo "" >> gradle.properties
+          echo "gradle.publish.key=${{ secrets.KEY_TEST }}" >> gradle.properties
+          echo "gradle.publish.secret=${{ secrets.SECRET_TEST }}" >> gradle.properties
+
           cat gradle.properties
           ./gradlew publishPlugins
