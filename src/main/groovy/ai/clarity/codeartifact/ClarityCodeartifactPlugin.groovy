@@ -2,37 +2,29 @@ package ai.clarity.codeartifact
 
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider
-import software.amazon.awssdk.regions.Region
-import software.amazon.awssdk.services.codeartifact.CodeartifactClient
-import software.amazon.awssdk.services.codeartifact.model.GetAuthorizationTokenResponse
+import org.gradle.api.provider.Provider
 
 class ClarityCodeartifactPlugin implements Plugin<Project> {
     void apply(Project project) {
-        setupCodeartifactRepositories(project)
+        Provider<CodeartifactToken> serviceProvider = project
+                .getGradle()
+                .getSharedServices()
+                .registerIfAbsent("codeartifact-token", CodeartifactToken.class, {})
+
+        setupCodeartifactRepositories(project, serviceProvider)
     }
 
-    static GetAuthorizationTokenResponse getAuthorizationToken(CodeArtifactUrl codeArtifactUrl, String profileName) {
-        CodeartifactClient client = CodeartifactClient.builder()
-                .credentialsProvider(ProfileCredentialsProvider.create(profileName))
-                .region(Region.of(codeArtifactUrl.getRegion()))
-                .build()
-
-        GetAuthorizationTokenResponse result = client.getAuthorizationToken({ req -> req.domain(codeArtifactUrl.getArtifactDomain()).domainOwner(codeArtifactUrl.getArtifactOwner()) })
-
-        return result
-    }
-
-    static boolean setupCodeartifactRepositories(Project project) {
+    static void setupCodeartifactRepositories(Project project, Provider<CodeartifactToken> serviceProvider) {
         if (!project.repositories.metaClass.respondsTo(project.repositories, 'codeartifact', String, String, Object)) {
             project.logger.debug 'Adding codeartifact(String,String?,Closure?) method to project RepositoryHandler'
             project.repositories.metaClass.codeartifact = { String repoUrl, String profile = 'default', def closure = null ->
-                def token = getAuthorizationToken(CodeArtifactUrl.of(repoUrl), profile)
+                project.logger.debug "Getting token for $repoUrl in profile $profile"
+                def token = serviceProvider.get().getToken(repoUrl, profile)
                 delegate.maven {
                     url repoUrl
                     credentials {
                         username 'aws'
-                        password token.authorizationToken()
+                        password token
                     }
                 }
                 if (closure) {
@@ -41,7 +33,5 @@ class ClarityCodeartifactPlugin implements Plugin<Project> {
                 }
             }
         }
-
-        return true
     }
 }
