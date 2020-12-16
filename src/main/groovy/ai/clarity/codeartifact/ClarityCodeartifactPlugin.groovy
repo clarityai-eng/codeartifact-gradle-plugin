@@ -1,6 +1,6 @@
 package ai.clarity.codeartifact
 
-import com.google.common.base.Splitter
+
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.dsl.RepositoryHandler
@@ -62,7 +62,7 @@ class ClarityCodeartifactPlugin implements Plugin<Project> {
                 URI repoUri = mavenRepo.getUrl()
                 if (isCodeArtifactUri(repoUri) && areCredentialsEmpty(mavenRepo)) {
                     String profile = getProfileFromUri(repoUri, System.getenv("CODEARTIFACT_PROFILE"))
-                    logger.info('Using profile {} to get codeartifact token.', profile)
+                    logger.info('Getting token for {} in profile {}', repoUri.toString(), profile)
                     String token = serviceProvider.get().getToken(repoUri, profile)
                     mavenRepo.credentials({
                         username 'aws'
@@ -76,7 +76,7 @@ class ClarityCodeartifactPlugin implements Plugin<Project> {
     }
 
     private URI removeProfile(URI uri) {
-        return new URI(uri.scheme, uri.userInfo, uri.host, uri.port, uri.path, null, null)
+        return URIBuilder.of(uri).removeQueryParam("profile").toURI();
     }
 
     private boolean areCredentialsEmpty(MavenArtifactRepository mavenRepo) {
@@ -84,20 +84,14 @@ class ClarityCodeartifactPlugin implements Plugin<Project> {
     }
 
     private boolean isCodeArtifactUri(URI uri) {
-        //return uri.toString().contains('.codeartifact.')
         return uri.toString().matches('(?i).+\\.codeartifact\\..+\\.amazonaws\\..+')
     }
 
     private String getProfileFromUri(URI uri, String defaultValue) {
-        return getQueryMap(uri.getQuery()).getOrDefault('profile', defaultValue)
-    }
-
-    private Map<String, String> getQueryMap(String query) {
-        if (query == null) {
-            return Collections.emptyMap();
+        def value = URIBuilder.of(uri).getQueryParamValue("profile")
+        if (value == null) {
+            value = defaultValue;
         }
-        return Splitter.on('&')
-                .withKeyValueSeparator('=')
-                .split(query);
+        return value;
     }
 }

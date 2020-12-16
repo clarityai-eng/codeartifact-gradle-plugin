@@ -80,4 +80,23 @@ class URIBuilderTest {
 
     assertThat(builder.toURI()).isEqualTo(uri);
   }
+
+  @Test
+  void testWithoutPath() throws URISyntaxException {
+    URI uri = URI.create("https://www.acme.com?foo=bar");
+    URIBuilder builder = URIBuilder.of(uri);
+
+    assertThat(builder.getQueryParamValue("foo")).isEqualTo("bar");
+    assertThat(builder.getHost()).isEqualTo("www.acme.com");
+    assertThat(builder.toURI()).isEqualTo(uri);
+  }
+
+  @Test
+  void testParamWithoutValue() throws URISyntaxException {
+    URI uri = URI.create("https://testuser:testpass@www.acme.com/test/path?foo");
+    URIBuilder builder = URIBuilder.of(uri);
+
+    assertThat(builder.getQueryParamValue("foo")).isNull();
+    assertThat(builder.toURI()).isEqualTo(uri);
+  }
 }

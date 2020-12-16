@@ -94,7 +94,14 @@ public class URIBuilder {
 
   private String generateQueryByParams() {
     String query = queryParams.entrySet().stream()
-      .map(e -> e.getKey() + "=" + e.getValue())
+      .map(e -> {
+        String txt = e.getKey();
+        if (e.getValue() != null) {
+          txt += "=" + e.getValue();
+        }
+
+        return txt;
+      })
       .collect(Collectors.joining("&"));
 
     if (query.isEmpty()) {
