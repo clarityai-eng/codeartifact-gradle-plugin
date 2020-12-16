@@ -61,7 +61,7 @@ class ClarityCodeartifactPlugin implements Plugin<Project> {
                 MavenArtifactRepository mavenRepo = (MavenArtifactRepository) artifactRepository;
                 URI repoUri = mavenRepo.getUrl()
                 if (isCodeArtifactUri(repoUri) && areCredentialsEmpty(mavenRepo)) {
-                    String profile = getProfileFromUri(repoUri, 'default')
+                    String profile = getProfileFromUri(repoUri, System.getenv("CODEARTIFACT_PROFILE"))
                     logger.info('Using profile {} to get codeartifact token.', profile)
                     String token = serviceProvider.get().getToken(repoUri, profile)
                     mavenRepo.credentials({
@@ -93,6 +93,9 @@ class ClarityCodeartifactPlugin implements Plugin<Project> {
     }
 
     private Map<String, String> getQueryMap(String query) {
+        if (query == null) {
+            return Collections.emptyMap();
+        }
         return Splitter.on('&')
                 .withKeyValueSeparator('=')
                 .split(query);
