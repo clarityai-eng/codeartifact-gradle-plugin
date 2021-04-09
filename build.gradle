@@ -26,7 +26,7 @@ repositories {
 
 dependencies {
     implementation(platform('org.junit:junit-bom:5.7.1'))
-    implementation(platform("software.amazon.awssdk:bom:2.15.47"))
+    implementation(platform("software.amazon.awssdk:bom:2.16.38"))
     
     implementation('software.amazon.awssdk:codeartifact')
     implementation('software.amazon.awssdk:sts')
