@@ -29,7 +29,7 @@ publishing {
 
 ### Advanced Usage
 
-If you need a concrete profile for AWS authentication you have 3 different options:
+If you need a concrete profile for AWS authentication you have 4 different options:
 
 #### 1 - Add the profile name to the repository url as a query param:
 
