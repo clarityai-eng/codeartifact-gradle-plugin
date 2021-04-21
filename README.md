@@ -29,7 +29,7 @@ publishing {
 
 ### Advanced Usage
 
-If you need a concrete profile for AWS authentication you have 3 different options:
+If you need a concrete profile for AWS authentication you have 4 different options:
 
 #### 1 - Add the profile name to the repository url as a query param:
 
@@ -52,3 +52,20 @@ the [standard environment vars](https://docs.aws.amazon.com/sdk-for-java/v1/deve
 #### 3 - Define the environment var `CODEARTIFACT_PROFILE` with the profile name you want to use
 
 If you need a different profile for codeartifact than for the rest of AWS calls you can use this environment var. 
+
+#### 4 - Define the profile using a system property
+
+If you need a different profile for codeartifact and you cannot define a enviroment variable, you
+can define it via system property also:
+
+This way using `gradle.properties` file:
+
+```properties
+systemProp.codeartifact.profile=<your profile>
+```
+
+Or using command line:
+
+```bash
+gradle -Dcodeartifact.profile=<your profile> ...
+```
