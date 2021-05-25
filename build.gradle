@@ -29,6 +29,7 @@ dependencies {
     
     implementation('software.amazon.awssdk:codeartifact')
     implementation('software.amazon.awssdk:sts')
+    implementation('software.amazon.awssdk:sso')
 
     testImplementation('org.junit.jupiter:junit-jupiter-api')
     testRuntimeOnly('org.junit.jupiter:junit-jupiter-engine')
