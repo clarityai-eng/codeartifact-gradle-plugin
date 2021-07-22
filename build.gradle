@@ -10,7 +10,7 @@ plugins {
     id 'maven-publish'
 
     // Enables to run "gradle checkUpdates" task to check dependency updates
-    id 'name.remal.check-updates' version '1.4.0'
+    id 'name.remal.check-updates' version '1.4.1'
 
     // Enabled to run "gradle release" task to generates application release
     id 'net.researchgate.release' version '2.8.1'
