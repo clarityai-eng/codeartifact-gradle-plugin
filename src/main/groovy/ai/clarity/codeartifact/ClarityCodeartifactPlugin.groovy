@@ -15,25 +15,31 @@
  */
 package ai.clarity.codeartifact
 
-
+import groovy.transform.TypeChecked
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.dsl.RepositoryHandler
 import org.gradle.api.artifacts.repositories.MavenArtifactRepository
-import org.gradle.api.logging.Logger
+import org.gradle.api.invocation.Gradle
 import org.gradle.api.provider.Provider
+import org.slf4j.Logger
 
 class ClarityCodeartifactPlugin implements Plugin<Project> {
     private Logger logger
 
     void apply(Project project) {
-        this.logger = project.logger;
-        Provider<CodeartifactToken> serviceProvider = project
-                .getGradle()
+        this.logger = project.logger
+        def gradle = project.getGradle()
+        def tokenProvider = codeArtifactTokenProviderForGradle(gradle)
+        setupCodeartifactRepositories(project, tokenProvider)
+        setupCodeartifactRepositoriesByUrl(project, tokenProvider)
+    }
+
+    static Provider<CodeartifactToken> codeArtifactTokenProviderForGradle(Gradle gradle) {
+        Provider<CodeartifactToken> serviceProvider = gradle
                 .getSharedServices()
                 .registerIfAbsent('codeartifact-token', CodeartifactToken.class, {})
-        setupCodeartifactRepositories(project, serviceProvider)
-        setupCodeartifactRepositoriesByUrl(project, serviceProvider)
+        serviceProvider
     }
 
     private void setupCodeartifactRepositories(Project project, Provider<CodeartifactToken> serviceProvider) {
@@ -57,18 +63,18 @@ class ClarityCodeartifactPlugin implements Plugin<Project> {
         }
     }
 
-    private void setupCodeartifactRepositoriesByUrl(Project project, Provider<CodeartifactToken> serviceProvider) {
-        project.afterEvaluate({ p ->
-            configRepositories(p.repositories, serviceProvider)
+    private static void setupCodeartifactRepositoriesByUrl(Project project, Provider<CodeartifactToken> serviceProvider) {
+        project.afterEvaluate({ Project p ->
+            configRepositories(p.logger, p.repositories, serviceProvider)
             p.plugins.withId('maven-publish', { publishPlugin ->
                 p.extensions.configure('publishing', { publishing ->
-                    configRepositories(publishing.getRepositories(), serviceProvider)
+                    configRepositories(p.logger, publishing.getRepositories(), serviceProvider)
                 })
             })
         })
     }
 
-    private void configRepositories(RepositoryHandler repositories, Provider<CodeartifactToken> serviceProvider) {
+    static void configRepositories(Logger logger, RepositoryHandler repositories, Provider<CodeartifactToken> serviceProvider) {
         ListIterator it = repositories.listIterator()
         while (it.hasNext()) {
             def artifactRepository = it.next()
@@ -90,23 +96,23 @@ class ClarityCodeartifactPlugin implements Plugin<Project> {
         }
     }
 
-    private String getDefaultProfile() {
+    private static String getDefaultProfile() {
         return System.getProperty("codeartifact.profile", System.getenv("CODEARTIFACT_PROFILE"));
     }
 
-    private URI removeProfile(URI uri) {
+    private static URI removeProfile(URI uri) {
         return URIBuilder.of(uri).removeQueryParam("profile").toURI();
     }
 
-    private boolean areCredentialsEmpty(MavenArtifactRepository mavenRepo) {
+    private static boolean areCredentialsEmpty(MavenArtifactRepository mavenRepo) {
         return mavenRepo.getCredentials().getPassword() == null && mavenRepo.getCredentials().getUsername() == null
     }
 
-    private boolean isCodeArtifactUri(URI uri) {
+    private static boolean isCodeArtifactUri(URI uri) {
         return uri.toString().matches('(?i).+\\.codeartifact\\..+\\.amazonaws\\..+')
     }
 
-    private String getProfileFromUri(URI uri, String defaultValue) {
+    private static String getProfileFromUri(URI uri, String defaultValue) {
         def value = URIBuilder.of(uri).getQueryParamValue("profile")
         if (value == null) {
             value = defaultValue;

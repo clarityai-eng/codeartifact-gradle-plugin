@@ -26,7 +26,8 @@ repositories {
 dependencies {
     implementation(platform('org.junit:junit-bom:5.7.2'))
     implementation(platform("software.amazon.awssdk:bom:2.17.0"))
-    
+
+    implementation('org.slf4j:slf4j-api:1.7.32')
     implementation('software.amazon.awssdk:codeartifact')
     implementation('software.amazon.awssdk:sts')
     implementation('software.amazon.awssdk:sso')
@@ -41,11 +42,14 @@ test {
 }
 
 gradlePlugin {
-    // Define the plugin
     plugins {
-        clarity {
-            id = 'ai.clarity.codeartifact'
+        codeArtifactRepositories {
+            id = 'ai.clarity.codeartifact.repositories'
             implementationClass = 'ai.clarity.codeartifact.ClarityCodeartifactPlugin'
+        }
+        codeArtifactPluginRepositories {
+            id = 'ai.clarity.codeartifact.pluginRepositories'
+            implementationClass = 'ai.clarity.codeartifact.CodeArtifactPluginRepositoriesPlugin'
         }
     }
 }
