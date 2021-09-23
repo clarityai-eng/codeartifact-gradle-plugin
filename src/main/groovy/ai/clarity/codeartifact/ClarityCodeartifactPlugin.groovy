@@ -20,6 +20,7 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.dsl.RepositoryHandler
 import org.gradle.api.artifacts.repositories.MavenArtifactRepository
+import org.gradle.api.artifacts.repositories.UrlArtifactRepository
 import org.gradle.api.invocation.Gradle
 import org.gradle.api.provider.Provider
 import org.slf4j.Logger
@@ -63,7 +64,7 @@ class ClarityCodeartifactPlugin implements Plugin<Project> {
         }
     }
 
-    private static void setupCodeartifactRepositoriesByUrl(Project project, Provider<CodeartifactToken> serviceProvider) {
+    static void setupCodeartifactRepositoriesByUrl(Project project, Provider<CodeartifactToken> serviceProvider) {
         project.afterEvaluate({ Project p ->
             configRepositories(p.logger, p.repositories, serviceProvider)
             p.plugins.withId('maven-publish', { publishPlugin ->
@@ -75,13 +76,17 @@ class ClarityCodeartifactPlugin implements Plugin<Project> {
     }
 
     static void configRepositories(Logger logger, RepositoryHandler repositories, Provider<CodeartifactToken> serviceProvider) {
+        logger.info("configRepositories({})", Thread.currentThread().name, repositories.join(","))
         ListIterator it = repositories.listIterator()
         while (it.hasNext()) {
             def artifactRepository = it.next()
             if (artifactRepository instanceof MavenArtifactRepository) {
                 MavenArtifactRepository mavenRepo = (MavenArtifactRepository) artifactRepository;
-                URI repoUri = mavenRepo.getUrl()
-                if (isCodeArtifactUri(repoUri) && areCredentialsEmpty(mavenRepo)) {
+                def repoUri = mavenRepo.getUrl()
+                def hasCodeArtifactUri = isCodeArtifactUri(repoUri)
+                def hasNoCredentials = areCredentialsEmpty(mavenRepo)
+                logger.info("MavenArtifactRepository {} hasCodeArtifactUri:{} hasNoCredentials:{} ", repoUri, hasCodeArtifactUri, hasNoCredentials)
+                if (hasCodeArtifactUri && hasNoCredentials) {
                     String profile = getProfileFromUri(repoUri, getDefaultProfile())
                     logger.info('Getting token for {} in profile {}', repoUri.toString(), profile)
                     String token = serviceProvider.get().getToken(repoUri, profile)

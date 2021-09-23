@@ -43,13 +43,13 @@ test {
 
 gradlePlugin {
     plugins {
-        codeArtifactRepositories {
-            id = 'ai.clarity.codeartifact.repositories'
+        clarity {
+            id = 'ai.clarity.codeartifact'
             implementationClass = 'ai.clarity.codeartifact.ClarityCodeartifactPlugin'
         }
-        codeArtifactPluginRepositories {
-            id = 'ai.clarity.codeartifact.pluginRepositories'
-            implementationClass = 'ai.clarity.codeartifact.CodeArtifactPluginRepositoriesPlugin'
+        repositories {
+            id = 'ai.clarity.codeartifact.repositories'
+            implementationClass = 'ai.clarity.codeartifact.CodeArtifactRepositoriesPlugin'
         }
     }
 }
@@ -84,6 +84,9 @@ pluginBundle {
         clarity {
             // id is captured from java-gradle-plugin configuration
             displayName = 'Gradle Codeartifact plugin'
+        }
+        repositories {
+            displayName = 'Gradle CodeArtifact repositories plugin'
         }
     }
 }
