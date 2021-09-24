@@ -15,12 +15,10 @@
  */
 package ai.clarity.codeartifact
 
-import groovy.transform.TypeChecked
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.dsl.RepositoryHandler
 import org.gradle.api.artifacts.repositories.MavenArtifactRepository
-import org.gradle.api.artifacts.repositories.UrlArtifactRepository
 import org.gradle.api.invocation.Gradle
 import org.gradle.api.provider.Provider
 import org.slf4j.Logger
@@ -84,19 +82,17 @@ class ClarityCodeartifactPlugin implements Plugin<Project> {
                 MavenArtifactRepository mavenRepo = (MavenArtifactRepository) artifactRepository;
                 def repoUri = mavenRepo.getUrl()
                 def hasCodeArtifactUri = isCodeArtifactUri(repoUri)
-                def hasNoCredentials = areCredentialsEmpty(mavenRepo)
-                logger.info("MavenArtifactRepository {} hasCodeArtifactUri:{} hasNoCredentials:{} ", repoUri, hasCodeArtifactUri, hasNoCredentials)
-                if (hasCodeArtifactUri && hasNoCredentials) {
+                logger.info("MavenArtifactRepository {} hasCodeArtifactUri:{}", repoUri, hasCodeArtifactUri)
+                if (hasCodeArtifactUri && areCredentialsEmpty(mavenRepo)) {
                     String profile = getProfileFromUri(repoUri, getDefaultProfile())
                     logger.info('Getting token for {} in profile {}', repoUri.toString(), profile)
                     String token = serviceProvider.get().getToken(repoUri, profile)
-                    mavenRepo.credentials({
+                    mavenRepo.credentials {
                         username 'aws'
                         password token
-                    })
-
-                    mavenRepo.setUrl(removeProfile(repoUri))
+                    }
                 }
+                mavenRepo.setUrl(removeProfile(repoUri))
             }
         }
     }
