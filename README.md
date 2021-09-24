@@ -11,6 +11,10 @@ the token.
 import ai.clarity.codeartifact.CodeArtifactRepositoriesPlugin
 
 initscript {
+    fun pluginAsDependency(id: String, version: String): String {
+        return "${id}:${id}.gradle.plugin:${version}"
+    }
+
     dependencies {
         classpath(pluginAsDependency("ai.clarity.codeartifact.repositories", "0.0.13-pluginRepositoriesSupport"))
     }
