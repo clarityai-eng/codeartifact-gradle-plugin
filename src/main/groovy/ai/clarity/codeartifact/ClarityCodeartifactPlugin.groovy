@@ -91,8 +91,8 @@ class ClarityCodeartifactPlugin implements Plugin<Project> {
                         username 'aws'
                         password token
                     }
+                    mavenRepo.setUrl(removeProfile(repoUri))
                 }
-                mavenRepo.setUrl(removeProfile(repoUri))
             }
         }
     }
