@@ -5,7 +5,35 @@ the token.
 
 ## Usage
 
-In your build.gradle file:
+## Init script (init.gradle.kts) usage
+
+```
+import ai.clarity.codeartifact.CodeArtifactRepositoriesPlugin
+
+initscript {
+    fun pluginAsDependency(id: String, version: String): String {
+        return "${id}:${id}.gradle.plugin:${version}"
+    }
+
+    dependencies {
+        classpath(pluginAsDependency("ai.clarity.codeartifact.repositories", "0.0.13-pluginRepositoriesSupport"))
+    }
+}
+
+settingsEvaluated {
+    settings.pluginManagement {
+        repositories {
+            maven {
+                url = uri("https://SCRUBBED.codeartifact.REGION.amazonaws.com/maven/.../")
+            }
+        }
+    }
+}
+
+apply<CodeArtifactRepositoriesPlugin>()
+```
+
+## Build script  (build.gradle) usage
 
 ```
 plugins {
