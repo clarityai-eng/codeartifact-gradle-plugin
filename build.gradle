@@ -13,7 +13,7 @@ plugins {
     id 'name.remal.check-updates' version '1.5.0'
 
     // Enabled to run "gradle release" task to generates application release
-    id 'net.researchgate.release' version '2.8.1'
+    id 'net.researchgate.release' version '3.0.0'
 }
 
 group 'ai.clarity'
