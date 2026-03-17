@@ -23,7 +23,7 @@ import org.gradle.api.services.BuildService;
 import org.gradle.api.services.BuildServiceParameters;
 import org.gradle.api.services.BuildServiceParameters.None;
 
-public class CodeArtifactToken implements BuildService<BuildServiceParameters.None> {
+public class CodeArtifactToken implements BuildService<None> {
 
   private final ConcurrentHashMap<String, String> tokensCache = new ConcurrentHashMap<>();
 

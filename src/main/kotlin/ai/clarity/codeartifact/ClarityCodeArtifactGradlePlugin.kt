@@ -22,27 +22,23 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.dsl.RepositoryHandler
 import org.gradle.api.artifacts.repositories.MavenArtifactRepository
+import org.gradle.api.initialization.Settings
 import org.gradle.api.logging.Logging
 import org.gradle.api.plugins.ExtensionAware
 import org.gradle.api.provider.Provider
-import org.gradle.api.publish.PublishingExtension
 import java.net.URI
 
 @Suppress("unused")
-class ClarityCodeArtifactGradlePlugin : Plugin<Project> {
+class ClarityCodeArtifactGradlePlugin : Plugin<Any> {
 
-  override fun apply(target: Project) {
+  private val projectPlugin = CodeArtifactProjectPlugin()
+  private val settingsPlugin = CodeArtifactSettingsPlugin()
 
-    val serviceProvider = target.gradle.sharedServices.registerIfAbsent(
-      "codeartifact-token",
-      CodeArtifactToken::class.java
-    ) {}
-    CodeartifactRepositoryConfigurer.configure(target.repositories, target.logger, serviceProvider)
-    target.plugins.withId("maven-publish") {
-      val publishing = target.extensions.findByType(PublishingExtension::class.java)
-      publishing?.repositories?.let {
-        CodeartifactRepositoryConfigurer.configure(it, target.logger, serviceProvider)
-      }
+  override fun apply(target: Any) {
+    when (target) {
+      is Project -> projectPlugin.apply(target)
+      is Settings -> settingsPlugin.apply(target)
+      else -> throw IllegalArgumentException("This plugin can only be applied to Project or Settings")
     }
   }
 }
