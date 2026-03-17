@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2021 original authors
+ * Copyright 2020-2026 original authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package ai.clarity.codeartifact;
 
 import java.net.MalformedURLException;
@@ -22,9 +23,9 @@ import org.gradle.api.services.BuildService;
 import org.gradle.api.services.BuildServiceParameters;
 import org.gradle.api.services.BuildServiceParameters.None;
 
-public class CodeartifactToken implements BuildService<BuildServiceParameters.None> {
+public class CodeArtifactToken implements BuildService<BuildServiceParameters.None> {
 
-  private ConcurrentHashMap<String, String> tokensCache = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<String, String> tokensCache = new ConcurrentHashMap<>();
 
   public String getToken(URI uri, String profile) throws MalformedURLException {
     return getToken(uri.toString(), profile);
