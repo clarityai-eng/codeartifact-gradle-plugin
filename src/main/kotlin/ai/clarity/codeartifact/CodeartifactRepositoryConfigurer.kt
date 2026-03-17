@@ -102,8 +102,8 @@ internal object CodeartifactRepositoryConfigurer {
     }
   }
 
-  private fun getDefaultProfile(): String {
-    return System.getProperty("codeartifact.profile") ?: System.getenv("CODEARTIFACT_PROFILE") ?: "default"
+  private fun getDefaultProfile(): String? {
+    return System.getProperty("codeartifact.profile") ?: System.getenv("CODEARTIFACT_PROFILE")
   }
 
   private fun removeProfile(uri: URI): URI {
@@ -118,7 +118,7 @@ internal object CodeartifactRepositoryConfigurer {
     return uri.toString().matches("(?i).+\\.codeartifact\\..+\\.amazonaws\\..+".toRegex())
   }
 
-  private fun getProfileFromUri(uri: URI, defaultValue: String): String {
+  private fun getProfileFromUri(uri: URI, defaultValue: String?): String? {
     return URIBuilder.of(uri).getQueryParamValue("profile") ?: defaultValue
   }
 }
