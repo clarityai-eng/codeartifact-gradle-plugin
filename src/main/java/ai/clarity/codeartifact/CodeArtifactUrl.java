@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2021 original authors
+ * Copyright 2020-2026 original authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 package ai.clarity.codeartifact;
 
 import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 
 class CodeArtifactUrl {
@@ -40,11 +42,20 @@ class CodeArtifactUrl {
     this.artifactOwner = artifactOwner;
     this.region = region;
     this.path = normalizePath(path);
-    url = new URL(String.format("https://%s-%s.d.codeartifact.%s.amazonaws.com/%s", artifactDomain, artifactOwner, region, this.path));
+    try {
+      url = new URI(
+        String.format("https://%s-%s.d.codeartifact.%s.amazonaws.com/%s", artifactDomain, artifactOwner, region, this.path)).toURL();
+    } catch (URISyntaxException e) {
+      throw new MalformedURLException(e.getMessage());
+    }
   }
 
   public static CodeArtifactUrl of(String url) throws MalformedURLException {
-    return of(new URL(url));
+    try {
+      return of(new URI(url).toURL());
+    } catch (URISyntaxException e) {
+      throw new MalformedURLException(e.getMessage());
+    }
   }
 
   public static CodeArtifactUrl of(String artifactDomain, String artifactOwner, String region, String path) throws MalformedURLException {
