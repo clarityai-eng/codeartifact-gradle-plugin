@@ -56,7 +56,7 @@ fun RepositoryHandler.codeartifact(
   val ext = (this as ExtensionAware).extensions.extraProperties
 
   @Suppress("UNCHECKED_CAST")
-  val serviceProvider = ext.get("codeartifactServiceProvider") as Provider<CodeArtifactToken>
+  val serviceProvider = ext["codeartifactServiceProvider"] as Provider<CodeArtifactToken>
   logger.info("Getting token for $repoUrl in profile $profile")
   val token = serviceProvider.get().getToken(repoUrl, profile)
   maven { mavenRepo ->

@@ -43,7 +43,7 @@ internal object CodeartifactRepositoryConfigurer {
   ) {
     val ext = (repositories as ExtensionAware).extensions.extraProperties
     // Stash the service provider so the Kotlin extension function can access it
-    ext.set("codeartifactServiceProvider", serviceProvider)
+    ext["codeartifactServiceProvider"] = serviceProvider
 
     if (!ext.has("codeartifact")) {
       logger.debug("Adding codeartifact(String, String, Closure) method to RepositoryHandler via extraProperties")
@@ -77,7 +77,7 @@ internal object CodeartifactRepositoryConfigurer {
           doCall(repoUrl, profile, null)
         }
       }
-      ext.set("codeartifact", closure)
+      ext["codeartifact"] = closure
     }
   }
 
