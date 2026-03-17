@@ -32,11 +32,11 @@ internal object CodeartifactRepositoryConfigurer {
     logger: Logger,
     serviceProvider: Provider<CodeArtifactToken>
   ) {
-    setupCodeartifactRepositories(repositories, logger, serviceProvider)
+    setupCodeArtifactRepositories(repositories, logger, serviceProvider)
     configRepositories(repositories, logger, serviceProvider)
   }
 
-  private fun setupCodeartifactRepositories(
+  private fun setupCodeArtifactRepositories(
     repositories: RepositoryHandler,
     logger: Logger,
     serviceProvider: Provider<CodeArtifactToken>
