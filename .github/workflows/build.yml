@@ -18,15 +18,7 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
-
-      - name: Cache Gradle packages
-        uses: actions/cache@v2.1.7
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle') }}
-          restore-keys: ${{ runner.os }}-gradle
+          cache: gradle
 
       - name: Build with Gradle
         run: ./gradlew build
