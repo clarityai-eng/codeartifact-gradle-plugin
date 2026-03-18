@@ -1,6 +1,8 @@
 name: Java CI
-
 on: [ push ]
+permissions:
+  checks: write
+  contents: read
 
 env:
   GRADLE_OPTS: "-Dorg.gradle.daemon=false"
