@@ -16,6 +16,7 @@ aws-bom = { module = "software.amazon.awssdk:bom", version.ref = "aws-sdk" }
 aws-codeartifact = { module = "software.amazon.awssdk:codeartifact" }
 aws-sts = { module = "software.amazon.awssdk:sts" }
 aws-sso = { module = "software.amazon.awssdk:sso" }
+aws-ssooidc = { module = "software.amazon.awssdk:ssooidc" }
 
 # Testing libraries
 kotlin-tests = { module = "org.jetbrains.kotlin:kotlin-test" }

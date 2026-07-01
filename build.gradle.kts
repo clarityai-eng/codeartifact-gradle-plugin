@@ -28,6 +28,7 @@ dependencies {
   implementation(libs.aws.codeartifact)
   implementation(libs.aws.sts)
   implementation(libs.aws.sso)
+  implementation(libs.aws.ssooidc)
 
   // Use the Kotlin Test integration.
   testImplementation(libs.kotlin.tests)
