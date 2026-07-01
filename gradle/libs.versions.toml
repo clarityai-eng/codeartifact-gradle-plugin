@@ -4,7 +4,7 @@
 aws-sdk = "2.44.13"
 assertj = "3.27.7"
 mockk= "1.14.9"
-junit-jupiter = "6.1.0"
+junit-jupiter = "6.1.1"
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version = "2.3.21" }
