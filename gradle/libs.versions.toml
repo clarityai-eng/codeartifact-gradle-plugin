@@ -7,7 +7,7 @@ mockk= "1.14.11"
 junit-jupiter = "6.1.1"
 
 [plugins]
-kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version = "2.4.0" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version = "2.4.10" }
 gradle-plugin-publish = { id = "com.gradle.plugin-publish", version = "2.1.1" }
 researchgate-release = { id = "net.researchgate.release", version = "3.1.0" }
 
