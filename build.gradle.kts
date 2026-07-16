@@ -63,7 +63,7 @@ configurations["functionalTestImplementation"].extendsFrom(configurations["testI
 configurations["functionalTestRuntimeOnly"].extendsFrom(configurations["testRuntimeOnly"])
 
 // Add a task to run the functional tests
-val functionalTest by tasks.registering(Test::class) {
+val functionalTest = tasks.register<Test>("functionalTest") {
   testClassesDirs = functionalTestSourceSet.output.classesDirs
   classpath = functionalTestSourceSet.runtimeClasspath
   useJUnitPlatform()
