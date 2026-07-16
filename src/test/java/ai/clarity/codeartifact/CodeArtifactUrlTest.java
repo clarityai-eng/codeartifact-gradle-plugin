@@ -16,6 +16,7 @@
 package ai.clarity.codeartifact;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.net.MalformedURLException;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,24 @@ class CodeArtifactUrlTest {
   }
 
   @Test
+  void testOfWithUrlWithMultiHyphenDomain() throws MalformedURLException {
+    // when
+    CodeArtifactUrl url = CodeArtifactUrl.of("https://my-domain-111122223333.d.codeartifact.us-west-2.amazonaws.com/maven/my-repo/");
+
+    // then
+    assertThat(url.getRegion()).isEqualTo("us-west-2");
+    assertThat(url.getArtifactDomain()).isEqualTo("my-domain");
+    assertThat(url.getArtifactOwner()).isEqualTo("111122223333");
+    assertThat(url.getPath()).isEqualTo("/maven/my-repo/");
+  }
+
+  @Test
+  void testOfWithInvalidUrl() {
+    assertThatThrownBy(() -> CodeArtifactUrl.of("not a valid url"))
+      .isInstanceOf(MalformedURLException.class);
+  }
+
+  @Test
   void testOfWithURLSegments() throws MalformedURLException {
     // Given
     String artifactDomain = "domain";
@@ -44,6 +63,15 @@ class CodeArtifactUrlTest {
 
     // When
     CodeArtifactUrl url = CodeArtifactUrl.of(artifactDomain, artifactOwner, region, path);
+
+    // Then
+    assertThat(url.getUrl()).hasToString("https://domain-owner.d.codeartifact.eu-west-2.amazonaws.com/maven/releases/");
+  }
+
+  @Test
+  void testOfWithURLSegmentsNormalizesPathWithoutLeadingSlash() throws MalformedURLException {
+    // When
+    CodeArtifactUrl url = CodeArtifactUrl.of("domain", "owner", "eu-west-2", "maven/releases");
 
     // Then
     assertThat(url.getUrl()).hasToString("https://domain-owner.d.codeartifact.eu-west-2.amazonaws.com/maven/releases/");
