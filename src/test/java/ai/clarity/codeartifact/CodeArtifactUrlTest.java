@@ -54,6 +54,53 @@ class CodeArtifactUrlTest {
   }
 
   @Test
+  void testOfWithDualstackUrl() throws MalformedURLException {
+    // when
+    CodeArtifactUrl url = CodeArtifactUrl.of("https://my-domain-111122223333.d.codeartifact.us-west-2.on.aws/maven/my-repo/");
+
+    // then
+    assertThat(url.getRegion()).isEqualTo("us-west-2");
+    assertThat(url.getArtifactDomain()).isEqualTo("my-domain");
+    assertThat(url.getArtifactOwner()).isEqualTo("111122223333");
+    assertThat(url.getPath()).isEqualTo("/maven/my-repo/");
+  }
+
+  @Test
+  void testOfWithHostWithoutOwner() {
+    assertThatThrownBy(() -> CodeArtifactUrl.of("https://mydomain.d.codeartifact.eu-west-1.amazonaws.com/maven/repository/"))
+      .isInstanceOf(MalformedURLException.class)
+      .hasMessageContaining("Not a valid CodeArtifact repository URL")
+      .hasMessageContaining("https://mydomain.d.codeartifact.eu-west-1.amazonaws.com/maven/repository/")
+      .hasMessageContaining("{domain}-{owner}.d.codeartifact.{region}.amazonaws.com");
+  }
+
+  @Test
+  void testOfWithNonCodeArtifactUrl() {
+    assertThatThrownBy(() -> CodeArtifactUrl.of("https://artifacts.mycompany.com/maven/repository/"))
+      .isInstanceOf(MalformedURLException.class)
+      .hasMessageContaining("Not a valid CodeArtifact repository URL");
+  }
+
+  @Test
+  void testOfWithVpcEndpointUrl() {
+    assertThatThrownBy(() -> CodeArtifactUrl.of(
+      "https://vpce-0743fe535b883ffff-76ddffff.d.codeartifact.us-west-2.vpce.amazonaws.com/maven/d/my-domain-111122223333/my-repo/"))
+      .isInstanceOf(MalformedURLException.class)
+      .hasMessageContaining("Not a valid CodeArtifact repository URL");
+  }
+
+  @Test
+  void testOfWithUppercaseHost() throws MalformedURLException {
+    // when
+    CodeArtifactUrl url = CodeArtifactUrl.of("https://my-domain-111122223333.d.CodeArtifact.us-west-2.amazonaws.com/maven/my-repo/");
+
+    // then
+    assertThat(url.getRegion()).isEqualTo("us-west-2");
+    assertThat(url.getArtifactDomain()).isEqualTo("my-domain");
+    assertThat(url.getArtifactOwner()).isEqualTo("111122223333");
+  }
+
+  @Test
   void testOfWithURLSegments() throws MalformedURLException {
     // Given
     String artifactDomain = "domain";
