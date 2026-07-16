@@ -114,4 +114,32 @@ class URIBuilderTest {
     assertThat(builder.getQueryParamValue("foo")).isNull();
     assertThat(builder.toURI()).isEqualTo(uri);
   }
+
+  @Test
+  void testExplicitPort() throws URISyntaxException {
+    URI uri = URI.create("http://www.acme.com:8080/test/path?foo=bar");
+    URIBuilder builder = URIBuilder.of(uri);
+
+    assertThat(builder.getPort()).isEqualTo(8080);
+    assertThat(builder.toURI()).isEqualTo(uri);
+  }
+
+  @Test
+  void testParamWithEmptyValue() throws URISyntaxException {
+    URI uri = URI.create("https://www.acme.com/test/path?foo=");
+    URIBuilder builder = URIBuilder.of(uri);
+
+    assertThat(builder.getQueryParamValue("foo")).isEmpty();
+    assertThat(builder.toURI()).isEqualTo(uri);
+  }
+
+  @Test
+  void testWithQueryStripsLeadingQuestionMark() throws URISyntaxException {
+    URIBuilder builder = URIBuilder.of(URI.create("https://www.acme.com/test/path"))
+      .withQuery("?foo=bar&baz=qux");
+
+    assertThat(builder.getQueryParamValue("foo")).isEqualTo("bar");
+    assertThat(builder.getQueryParamValue("baz")).isEqualTo("qux");
+    assertThat(builder.getQuery()).isEqualTo("foo=bar&baz=qux");
+  }
 }

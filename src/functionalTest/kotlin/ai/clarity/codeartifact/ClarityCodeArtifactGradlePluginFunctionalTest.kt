@@ -17,15 +17,19 @@
 
 package ai.clarity.codeartifact
 
+import com.sun.net.httpserver.HttpServer
 import org.assertj.core.api.Assertions.assertThat
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
+import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
 import java.io.File
+import java.net.InetSocketAddress
 
 private const val codeArtifactUrl =
   "https://my-domain-111122223333.d.codeartifact.us-west-2.amazonaws.com/maven/my-repo/"
@@ -334,6 +338,191 @@ class ClarityCodeartifactPluginFunctionalTest {
         .forwardOutput()
         .withPluginClasspath()
         .withProjectDir(projectDir)
+    }
+  }
+
+  @Nested
+  inner class GroovyDslFunctionalTest {
+
+    @TempDir
+    lateinit var projectDir: File
+
+    private val buildFile by lazy { File(projectDir, "build.gradle") }
+    private val settingsFile by lazy { File(projectDir, "settings.gradle") }
+
+    @BeforeEach
+    fun setUp() {
+      settingsFile.writeText("rootProject.name = 'test-groovy-project'")
+    }
+
+    @ParameterizedTest(name = "Gradle {0}")
+    @MethodSource("ai.clarity.codeartifact.ClarityCodeartifactPluginFunctionalTest#gradleVersions")
+    fun `plugin configures credentials via Groovy DSL codeartifact method`(gradleVersion: String) {
+      // Given: a Groovy build file that uses the codeartifact(...) dynamic method
+      buildFile.writeText(
+        """
+        plugins {
+            id 'ai.clarity.codeartifact'
+        }
+
+        repositories {
+            codeartifact('$codeArtifactUrl')
+        }
+        """.trimIndent()
+      )
+
+      // When: running the build (expecting a failure due to missing AWS credentials)
+      val result = createRunner(gradleVersion)
+        .withArguments("help", "--info")
+        .buildAndFail()
+
+      // Then: the failure confirms the Groovy DSL method tried to fetch a CodeArtifact token
+      assertThat(result.output).containsIgnoringCase("Getting token for $codeArtifactUrl in profile default")
+    }
+
+    @ParameterizedTest(name = "Gradle {0}")
+    @MethodSource("ai.clarity.codeartifact.ClarityCodeartifactPluginFunctionalTest#gradleVersions")
+    fun `plugin configures credentials via Groovy DSL codeartifact method with profile and closure`(gradleVersion: String) {
+      // Given: a Groovy build file that uses codeartifact(...) with a profile and a configuration closure
+      buildFile.writeText(
+        """
+        plugins {
+            id 'ai.clarity.codeartifact'
+        }
+
+        repositories {
+            codeartifact('$codeArtifactUrl', 'my-profile') {
+                name = 'customCodeArtifactRepo'
+            }
+        }
+        """.trimIndent()
+      )
+
+      // When: running the build (expecting a failure due to missing AWS credentials)
+      val result = createRunner(gradleVersion)
+        .withArguments("help", "--info")
+        .buildAndFail()
+
+      // Then: the failure confirms the requested profile reached the token fetch
+      assertThat(result.output).containsIgnoringCase("Getting token for $codeArtifactUrl in profile my-profile")
+    }
+
+    @ParameterizedTest(name = "Gradle {0}")
+    @MethodSource("ai.clarity.codeartifact.ClarityCodeartifactPluginFunctionalTest#gradleVersions")
+    fun `plugin attempts to configure credentials for maven repositories declared in Groovy DSL`(gradleVersion: String) {
+      // Given: a Groovy build file relying on automatic detection of the CodeArtifact URL
+      buildFile.writeText(
+        """
+        plugins {
+            id 'ai.clarity.codeartifact'
+        }
+
+        repositories {
+            maven {
+                url = uri('$codeArtifactUrl')
+            }
+        }
+        """.trimIndent()
+      )
+
+      // When: running the build (expecting a failure due to missing AWS credentials)
+      val result = createRunner(gradleVersion)
+        .withArguments("help", "--info")
+        .buildAndFail()
+
+      // Then: the failure confirms the plugin detected the repository and tried to fetch a token
+      assertThat(result.output).containsIgnoringCase("Getting token for $codeArtifactUrl in profile")
+    }
+
+    private fun createRunner(gradleVersion: String): GradleRunner {
+      return GradleRunner.create()
+        .withGradleVersion(gradleVersion)
+        .forwardOutput()
+        .withPluginClasspath()
+        .withProjectDir(projectDir)
+    }
+  }
+
+  @Nested
+  inner class TokenEndpointFunctionalTest {
+
+    @TempDir
+    lateinit var projectDir: File
+
+    private val buildFile by lazy { File(projectDir, "build.gradle.kts") }
+    private val settingsFile by lazy { File(projectDir, "settings.gradle.kts") }
+
+    private lateinit var server: HttpServer
+
+    @BeforeEach
+    fun setUp() {
+      settingsFile.writeText("""rootProject.name = "test-token-endpoint"""")
+
+      // Stub of the CodeArtifact GetAuthorizationToken endpoint
+      server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+      server.createContext("/") { exchange ->
+        val body = """{"authorizationToken":"stub-token","expiration":1893456000}"""
+        val bytes = body.toByteArray()
+        exchange.responseHeaders.add("Content-Type", "application/json")
+        exchange.sendResponseHeaders(200, bytes.size.toLong())
+        exchange.responseBody.use { it.write(bytes) }
+      }
+      server.start()
+    }
+
+    @AfterEach
+    fun tearDown() {
+      server.stop(0)
+    }
+
+    @Test
+    fun `plugin fetches the token from the codeartifact endpoint and configures credentials`() {
+      // Given: a build file relying on automatic detection of the CodeArtifact URL
+      buildFile.writeText(
+        $$"""
+        plugins {
+            id("ai.clarity.codeartifact")
+        }
+
+        repositories {
+            maven {
+                url = uri("$$codeArtifactUrl")
+            }
+        }
+
+        tasks.register("printRepoCredentials") {
+            doLast {
+                val repo = project.repositories.first() as org.gradle.api.artifacts.repositories.MavenArtifactRepository
+                println("username=${repo.credentials.username}")
+                println("password=${repo.credentials.password}")
+            }
+        }
+        """.trimIndent()
+      )
+
+      // The AWS SDK resolves the service endpoint and static credentials from these variables,
+      // so the token request hits the local stub instead of AWS
+      val environment = System.getenv()
+        .minus(listOf("AWS_PROFILE", "CODEARTIFACT_PROFILE", "AWS_SESSION_TOKEN")) +
+        mapOf(
+          "AWS_ENDPOINT_URL_CODEARTIFACT" to "http://127.0.0.1:${server.address.port}",
+          "AWS_ACCESS_KEY_ID" to "test-access-key",
+          "AWS_SECRET_ACCESS_KEY" to "test-secret-key",
+        )
+
+      // When: running a build with the environment pointing to the stub
+      val result = GradleRunner.create()
+        .forwardOutput()
+        .withPluginClasspath()
+        .withProjectDir(projectDir)
+        .withEnvironment(environment)
+        .withArguments("printRepoCredentials")
+        .build()
+
+      // Then: the repository ends up configured with the stubbed token
+      assertThat(result.output).contains("username=aws")
+      assertThat(result.output).contains("password=stub-token")
+      assertThat(result.task(":printRepoCredentials")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
     }
   }
 }
