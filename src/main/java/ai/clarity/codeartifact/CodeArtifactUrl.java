@@ -19,8 +19,21 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 class CodeArtifactUrl {
+
+  // Accepts the public CodeArtifact repository hosts, both the standard endpoint
+  // ({domain}-{owner}.d.codeartifact.{region}.amazonaws.com) and the dualstack one
+  // ({domain}-{owner}.d.codeartifact.{region}.on.aws). VPC endpoints
+  // (vpce-*.d.codeartifact.{region}.vpce.amazonaws.com) carry the domain and owner in
+  // the path instead of the host and are not supported.
+  private static final Pattern HOST_PATTERN = Pattern.compile(
+    "(?i)^([^.]+)-([^-.]+)\\.d\\.codeartifact\\.([^.]+)\\.(?:amazonaws\\..+|on\\.aws)$");
+
+  private static final String EXPECTED_FORMAT =
+    "https://{domain}-{owner}.d.codeartifact.{region}.amazonaws.com/{format}/{repository}/";
 
   private final URL url;
   private final String artifactDomain;
@@ -28,13 +41,17 @@ class CodeArtifactUrl {
   private final String region;
   private final String path;
 
-  public CodeArtifactUrl(URL url) {
+  public CodeArtifactUrl(URL url) throws MalformedURLException {
+    Matcher host = HOST_PATTERN.matcher(url.getHost());
+    if (!host.matches()) {
+      throw new MalformedURLException(
+        "Not a valid CodeArtifact repository URL: " + url + " (expected format: " + EXPECTED_FORMAT + ")");
+    }
     this.url = url;
-    String[] domainLevels = this.url.getHost().split("\\.");
     path = url.getPath();
-    artifactDomain = domainLevels[0].substring(0, domainLevels[0].lastIndexOf("-"));
-    artifactOwner = domainLevels[0].substring(domainLevels[0].lastIndexOf("-") + 1);
-    region = domainLevels[domainLevels.length - 3];
+    artifactDomain = host.group(1);
+    artifactOwner = host.group(2);
+    region = host.group(3);
   }
 
   public CodeArtifactUrl(String artifactDomain, String artifactOwner, String region, String path) throws MalformedURLException {
@@ -62,7 +79,7 @@ class CodeArtifactUrl {
     return new CodeArtifactUrl(artifactDomain, artifactOwner, region, path);
   }
 
-  public static CodeArtifactUrl of(URL url) {
+  public static CodeArtifactUrl of(URL url) throws MalformedURLException {
     return new CodeArtifactUrl(url);
   }
 

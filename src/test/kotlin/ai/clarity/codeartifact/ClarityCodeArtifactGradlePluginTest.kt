@@ -115,6 +115,20 @@ class ClarityCodeArtifactGradlePluginTest {
     }
 
     @Test
+    fun `codeartifact extension rejects non-codeartifact urls`() {
+      // Given
+      val project = ProjectBuilder.builder().build()
+      project.plugins.apply("ai.clarity.codeartifact")
+
+      // When/Then
+      assertThatThrownBy { project.repositories.codeartifact("https://artifacts.mycompany.com/maven/repository/") }
+        .isInstanceOf(java.net.MalformedURLException::class.java)
+        .hasMessageContaining("Not a valid CodeArtifact repository URL")
+
+      assertThat(project.repositories).isEmpty()
+    }
+
+    @Test
     fun `codeartifact extension accepts an action`() {
       // Given
       val mockResponse = GetAuthorizationTokenResponse.builder()
