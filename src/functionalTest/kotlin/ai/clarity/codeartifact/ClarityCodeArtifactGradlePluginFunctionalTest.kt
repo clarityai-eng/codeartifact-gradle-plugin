@@ -444,6 +444,101 @@ class ClarityCodeartifactPluginFunctionalTest {
   }
 
   @Nested
+  inner class ProfileResolutionFunctionalTest {
+
+    @TempDir
+    lateinit var projectDir: File
+
+    private val buildFile by lazy { File(projectDir, "build.gradle.kts") }
+    private val settingsFile by lazy { File(projectDir, "settings.gradle.kts") }
+    private val gradlePropertiesFile by lazy { File(projectDir, "gradle.properties") }
+
+    @BeforeEach
+    fun setUp() {
+      settingsFile.writeText("""rootProject.name = "test-profile-resolution"""")
+      buildFile.writeText(
+        """
+        plugins {
+            id("ai.clarity.codeartifact")
+        }
+
+        repositories {
+            maven {
+                url = uri("$codeArtifactUrl")
+            }
+        }
+        """.trimIndent()
+      )
+    }
+
+    @ParameterizedTest(name = "Gradle {0}")
+    @MethodSource("ai.clarity.codeartifact.ClarityCodeartifactPluginFunctionalTest#gradleVersions")
+    fun `profile default from gradle properties is used`(gradleVersion: String) {
+      // Given: a project-wide default profile committed in gradle.properties
+      gradlePropertiesFile.writeText("systemProp.codeartifact.profile=dev")
+
+      // When: running the build (expecting a failure due to missing AWS credentials)
+      val result = createRunner(gradleVersion)
+        .withArguments("help", "--info")
+        .buildAndFail()
+
+      // Then: the token fetch uses the project default profile
+      assertThat(result.output).containsIgnoringCase("Getting token for $codeArtifactUrl in profile dev")
+    }
+
+    @ParameterizedTest(name = "Gradle {0}")
+    @MethodSource("ai.clarity.codeartifact.ClarityCodeartifactPluginFunctionalTest#gradleVersions")
+    fun `command line system property overrides the gradle properties default`(gradleVersion: String) {
+      // Given: a project-wide default profile and a CI-style command line override
+      gradlePropertiesFile.writeText("systemProp.codeartifact.profile=dev")
+
+      // When: running the build with -D, as a CI pipeline would
+      val result = createRunner(gradleVersion)
+        .withArguments("help", "--info", "-Dcodeartifact.profile=ci")
+        .buildAndFail()
+
+      // Then: the command line wins over the gradle.properties default
+      assertThat(result.output).containsIgnoringCase("Getting token for $codeArtifactUrl in profile ci")
+    }
+
+    @ParameterizedTest(name = "Gradle {0}")
+    @MethodSource("ai.clarity.codeartifact.ClarityCodeartifactPluginFunctionalTest#gradleVersions")
+    fun `url query param keeps precedence over the gradle properties default`(gradleVersion: String) {
+      // Given: a repository url with an explicit profile and a different project default
+      gradlePropertiesFile.writeText("systemProp.codeartifact.profile=dev")
+      buildFile.writeText(
+        """
+        plugins {
+            id("ai.clarity.codeartifact")
+        }
+
+        repositories {
+            maven {
+                url = uri("$codeArtifactUrl?profile=url-profile")
+            }
+        }
+        """.trimIndent()
+      )
+
+      // When: running the build (expecting a failure due to missing AWS credentials)
+      val result = createRunner(gradleVersion)
+        .withArguments("help", "--info")
+        .buildAndFail()
+
+      // Then: the url query param wins over the gradle.properties default
+      assertThat(result.output).containsIgnoringCase("in profile url-profile")
+    }
+
+    private fun createRunner(gradleVersion: String): GradleRunner {
+      return GradleRunner.create()
+        .withGradleVersion(gradleVersion)
+        .forwardOutput()
+        .withPluginClasspath()
+        .withProjectDir(projectDir)
+    }
+  }
+
+  @Nested
   inner class TokenEndpointFunctionalTest {
 
     @TempDir

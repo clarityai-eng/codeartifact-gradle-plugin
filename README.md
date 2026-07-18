@@ -267,6 +267,35 @@ Or using the command line:
 gradle -Dcodeartifact.profile=<your profile> ...
 ```
 
+### Recommended pattern: project-wide default profile with CI/CD override
+
+To give every developer a default profile without any local setup, while still letting CI/CD
+override it, commit the default to the project's `gradle.properties` instead of using the
+`?profile=` query param:
+
+```properties
+# gradle.properties (committed with the project)
+systemProp.codeartifact.profile=dev
+```
+
+Local builds then use the `dev` profile out of the box, and CI/CD overrides it from the
+command line:
+
+```bash
+gradle -Dcodeartifact.profile=ci ...
+```
+
+Keep in mind:
+
+- The `systemProp.` prefix is required. A plain `codeartifact.profile=dev` entry defines a
+  Gradle project property, which the plugin does not read.
+- Override with `-D` on the command line. The `CODEARTIFACT_PROFILE` environment variable
+  does not take precedence over a system property defined in `gradle.properties`.
+- A developer can override the project default for their machine in
+  `~/.gradle/gradle.properties`, which takes precedence over the project file.
+- Do not combine this pattern with `?profile=` in the repository URL: the query param has
+  the highest precedence and would defeat the override.
+
 ## Profile resolution order
 
 The profile is resolved in the following order of precedence:
