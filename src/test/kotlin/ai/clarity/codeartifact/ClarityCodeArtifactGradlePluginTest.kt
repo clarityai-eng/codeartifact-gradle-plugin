@@ -58,6 +58,8 @@ class ClarityCodeArtifactGradlePluginTest {
     @AfterEach
     fun tearDown() {
       unmockkAll()
+      System.clearProperty("codeartifact.accessKeyId")
+      System.clearProperty("codeartifact.secretAccessKey")
     }
 
     @Test
@@ -115,6 +117,90 @@ class ClarityCodeArtifactGradlePluginTest {
     }
 
     @Test
+    fun `codeartifact extension configures repository with service credentials`() {
+      // Given
+      val credentials = CodeArtifactCredentials.of("AKIAIOSFODNN7EXAMPLE", "service-user-secret")
+      val mockResponse = GetAuthorizationTokenResponse.builder()
+        .authorizationToken("mock-token-service-user")
+        .build()
+
+      mockkStatic(TokenFactory::class)
+      every { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), credentials) } returns mockResponse
+
+      val project = ProjectBuilder.builder().build()
+      project.plugins.apply("ai.clarity.codeartifact")
+
+      val codeArtifactUrl = "https://my-domain-111122223333.d.codeartifact.us-west-2.amazonaws.com/maven/my-repo/"
+
+      // When
+      project.repositories.codeartifact(codeArtifactUrl, credentials) {
+        it.name = "serviceUserRepo"
+      }
+
+      // Then
+      val repository = project.repositories.first() as MavenArtifactRepository
+      assertThat(repository.name).isEqualTo("serviceUserRepo")
+      assertThat(repository.url).isEqualTo(URI(codeArtifactUrl))
+      assertThat(repository.credentials.username).isEqualTo("aws")
+      assertThat(repository.credentials.password).isEqualTo("mock-token-service-user")
+
+      verify(exactly = 1) { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), credentials) }
+      verify(exactly = 0) { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any<String>()) }
+    }
+
+    @Test
+    fun `codeartifact extension without a profile uses the service credentials of the build`() {
+      // Given
+      System.setProperty("codeartifact.accessKeyId", "AKIAIOSFODNN7EXAMPLE")
+      System.setProperty("codeartifact.secretAccessKey", "service-user-secret")
+
+      val credentials = CodeArtifactCredentials.of("AKIAIOSFODNN7EXAMPLE", "service-user-secret")
+
+      mockkStatic(TokenFactory::class)
+      every { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), credentials) } returns
+        GetAuthorizationTokenResponse.builder().authorizationToken("mock-token-service-user").build()
+
+      val project = ProjectBuilder.builder().build()
+      project.plugins.apply("ai.clarity.codeartifact")
+
+      val codeArtifactUrl = "https://my-domain-111122223333.d.codeartifact.us-west-2.amazonaws.com/maven/my-repo/"
+
+      // When
+      project.repositories.codeartifact(codeArtifactUrl)
+
+      // Then
+      val repository = project.repositories.first() as MavenArtifactRepository
+      assertThat(repository.credentials.password).isEqualTo("mock-token-service-user")
+
+      verify(exactly = 0) { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any<String>()) }
+    }
+
+    @Test
+    fun `an explicit profile takes precedence over the service credentials of the build`() {
+      // Given
+      System.setProperty("codeartifact.accessKeyId", "AKIAIOSFODNN7EXAMPLE")
+      System.setProperty("codeartifact.secretAccessKey", "service-user-secret")
+
+      mockkStatic(TokenFactory::class)
+      every { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), "my-profile") } returns
+        GetAuthorizationTokenResponse.builder().authorizationToken("mock-token-profile").build()
+
+      val project = ProjectBuilder.builder().build()
+      project.plugins.apply("ai.clarity.codeartifact")
+
+      val codeArtifactUrl = "https://my-domain-111122223333.d.codeartifact.us-west-2.amazonaws.com/maven/my-repo/"
+
+      // When
+      project.repositories.codeartifact(codeArtifactUrl, "my-profile")
+
+      // Then
+      val repository = project.repositories.first() as MavenArtifactRepository
+      assertThat(repository.credentials.password).isEqualTo("mock-token-profile")
+
+      verify(exactly = 0) { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any<CodeArtifactCredentials>()) }
+    }
+
+    @Test
     fun `codeartifact extension rejects non-codeartifact urls`() {
       // Given
       val project = ProjectBuilder.builder().build()
@@ -136,7 +222,7 @@ class ClarityCodeArtifactGradlePluginTest {
         .build()
 
       mockkStatic(TokenFactory::class)
-      every { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any()) } returns mockResponse
+      every { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any<String>()) } returns mockResponse
 
       val project = ProjectBuilder.builder().build()
       project.plugins.apply("ai.clarity.codeartifact")

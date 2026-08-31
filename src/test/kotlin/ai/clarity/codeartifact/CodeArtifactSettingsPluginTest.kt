@@ -23,6 +23,8 @@ class CodeArtifactSettingsPluginTest {
   @AfterEach
   fun tearDown() {
     unmockkAll()
+    System.clearProperty("codeartifact.accessKeyId")
+    System.clearProperty("codeartifact.secretAccessKey")
   }
 
   @Test
@@ -33,7 +35,7 @@ class CodeArtifactSettingsPluginTest {
       .build()
 
     mockkStatic(TokenFactory::class)
-    every { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any()) } returns mockResponse
+    every { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any<String>()) } returns mockResponse
 
     val settings = mockk<Settings>(relaxed = true)
     val gradle = mockk<Gradle>(relaxed = true)
@@ -81,7 +83,7 @@ class CodeArtifactSettingsPluginTest {
     assertThat(repository.credentials.username).isEqualTo("aws")
     assertThat(repository.credentials.password).isEqualTo("mock-settings-token")
 
-    verify(exactly = 1) { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any()) }
+    verify(exactly = 1) { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any<String>()) }
   }
 
   @Test
@@ -92,7 +94,7 @@ class CodeArtifactSettingsPluginTest {
       .build()
 
     mockkStatic(TokenFactory::class)
-    every { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any()) } returns mockResponse
+    every { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any<String>()) } returns mockResponse
 
     val settings = mockk<Settings>(relaxed = true)
     val gradle = mockk<Gradle>(relaxed = true)
@@ -139,7 +141,7 @@ class CodeArtifactSettingsPluginTest {
     assertThat(repository.credentials.username).isEqualTo("aws")
     assertThat(repository.credentials.password).isEqualTo("mock-dep-token")
 
-    verify(exactly = 1) { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any()) }
+    verify(exactly = 1) { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any<String>()) }
   }
 
   @Test
@@ -196,7 +198,7 @@ class CodeArtifactSettingsPluginTest {
     assertThat(depRepo.credentials.username).isNull()
     assertThat(depRepo.credentials.password).isNull()
 
-    verify(exactly = 0) { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any()) }
+    verify(exactly = 0) { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any<String>()) }
   }
 
   @Test
@@ -247,7 +249,7 @@ class CodeArtifactSettingsPluginTest {
       .build()
 
     mockkStatic(TokenFactory::class)
-    every { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any()) } returns mockResponse
+    every { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any<String>()) } returns mockResponse
 
     val settings = mockk<Settings>(relaxed = true)
     val gradle = mockk<Gradle>(relaxed = true)
@@ -297,7 +299,68 @@ class CodeArtifactSettingsPluginTest {
     // Then - credentials should remain unchanged
     assertThat(repository.credentials.username).isEqualTo("existing-user")
     assertThat(repository.credentials.password).isEqualTo("existing-pass")
-    verify(exactly = 0) { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any()) }
+    verify(exactly = 0) { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any<String>()) }
+  }
+
+  @Test
+  fun `settings plugin uses the service credentials of the build`() {
+    // Given
+    System.setProperty("codeartifact.accessKeyId", "AKIAIOSFODNN7EXAMPLE")
+    System.setProperty("codeartifact.secretAccessKey", "service-user-secret")
+
+    val credentials = CodeArtifactCredentials.of("AKIAIOSFODNN7EXAMPLE", "service-user-secret")
+
+    mockkStatic(TokenFactory::class)
+    every { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), credentials) } returns
+      GetAuthorizationTokenResponse.builder().authorizationToken("mock-service-user-token").build()
+
+    val settings = mockk<Settings>(relaxed = true)
+    val gradle = mockk<Gradle>(relaxed = true)
+    val buildServiceRegistry = mockk<BuildServiceRegistry>(relaxed = true)
+    val serviceProvider = mockk<Provider<CodeArtifactToken>>(relaxed = true)
+    val codeArtifactToken = CodeArtifactToken()
+
+    every { settings.gradle } returns gradle
+    every { gradle.sharedServices } returns buildServiceRegistry
+    every {
+      buildServiceRegistry.registerIfAbsent(
+        any(),
+        any<Class<CodeArtifactToken>>(),
+        any()
+      )
+    } returns serviceProvider
+    every { serviceProvider.get() } returns codeArtifactToken
+
+    val pluginManagementProject = ProjectBuilder.builder().build()
+    val dependencyResolutionProject = ProjectBuilder.builder().build()
+
+    val pluginManagement = mockk<org.gradle.plugin.management.PluginManagementSpec>(relaxed = true)
+    val dependencyResolutionManagement =
+      mockk<org.gradle.api.initialization.resolve.DependencyResolutionManagement>(relaxed = true)
+
+    every { settings.pluginManagement } returns pluginManagement
+    every { pluginManagement.repositories } returns pluginManagementProject.repositories
+    every { settings.dependencyResolutionManagement } returns dependencyResolutionManagement
+    every { dependencyResolutionManagement.repositories } returns dependencyResolutionProject.repositories
+
+    val codeArtifactUrl = "https://my-domain-111122223333.d.codeartifact.us-west-2.amazonaws.com/maven/my-repo/"
+
+    // When
+    val plugin = CodeArtifactSettingsPlugin()
+    plugin.apply(settings)
+
+    pluginManagementProject.repositories.maven { repo ->
+      repo.url = URI(codeArtifactUrl)
+    }
+
+    val repository = pluginManagementProject.repositories.first() as MavenArtifactRepository
+
+    // Then
+    assertThat(repository.credentials.username).isEqualTo("aws")
+    assertThat(repository.credentials.password).isEqualTo("mock-service-user-token")
+
+    verify(exactly = 1) { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), credentials) }
+    verify(exactly = 0) { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any<String>()) }
   }
 
 }

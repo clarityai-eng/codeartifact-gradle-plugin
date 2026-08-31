@@ -30,6 +30,7 @@ import java.net.URI
 class CodeArtifactTokenTest {
 
   private val codeArtifactUrl = "https://my-domain-111122223333.d.codeartifact.us-west-2.amazonaws.com/maven/my-repo/"
+  private val credentials = CodeArtifactCredentials.of("AKIAIOSFODNN7EXAMPLE", "secret")
 
   @AfterEach
   fun tearDown() {
@@ -117,5 +118,66 @@ class CodeArtifactTokenTest {
     assertThat(fromUri).isEqualTo("tok-uri")
     assertThat(fromString).isEqualTo("tok-uri")
     verify(exactly = 1) { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), "default") }
+  }
+
+  @Test
+  fun `token is fetched only once for the same url and service credentials`() {
+    // Given
+    mockkStatic(TokenFactory::class)
+    every { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), credentials) } returns
+      GetAuthorizationTokenResponse.builder().authorizationToken("tok-credentials").build()
+
+    val service = CodeArtifactToken()
+
+    // When
+    val first = service.getToken(codeArtifactUrl, credentials)
+    val second = service.getToken(URI(codeArtifactUrl), credentials)
+
+    // Then
+    assertThat(first).isEqualTo("tok-credentials")
+    assertThat(second).isEqualTo("tok-credentials")
+    verify(exactly = 1) { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), credentials) }
+  }
+
+  @Test
+  fun `token is fetched separately for each set of service credentials on the same url`() {
+    // Given
+    val otherCredentials = CodeArtifactCredentials.of("AKIAANOTHEREXAMPLE00", "other-secret")
+
+    mockkStatic(TokenFactory::class)
+    every { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), credentials) } returns
+      GetAuthorizationTokenResponse.builder().authorizationToken("tok-service-user").build()
+    every { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), otherCredentials) } returns
+      GetAuthorizationTokenResponse.builder().authorizationToken("tok-other-service-user").build()
+
+    val service = CodeArtifactToken()
+
+    // When
+    val token = service.getToken(codeArtifactUrl, credentials)
+    val otherToken = service.getToken(codeArtifactUrl, otherCredentials)
+
+    // Then
+    assertThat(token).isEqualTo("tok-service-user")
+    assertThat(otherToken).isEqualTo("tok-other-service-user")
+  }
+
+  @Test
+  fun `service credentials and profiles do not share cache entries`() {
+    // Given
+    mockkStatic(TokenFactory::class)
+    every { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), "default") } returns
+      GetAuthorizationTokenResponse.builder().authorizationToken("tok-profile").build()
+    every { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), credentials) } returns
+      GetAuthorizationTokenResponse.builder().authorizationToken("tok-credentials").build()
+
+    val service = CodeArtifactToken()
+
+    // When
+    val profileToken = service.getToken(codeArtifactUrl, "default")
+    val credentialsToken = service.getToken(codeArtifactUrl, credentials)
+
+    // Then
+    assertThat(profileToken).isEqualTo("tok-profile")
+    assertThat(credentialsToken).isEqualTo("tok-credentials")
   }
 }
