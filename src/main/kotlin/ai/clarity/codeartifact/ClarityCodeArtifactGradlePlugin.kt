@@ -17,6 +17,7 @@
 
 package ai.clarity.codeartifact
 
+import ai.clarity.codeartifact.CodeArtifactAuthenticator.DEFAULT_PROFILE
 import org.gradle.api.Action
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -43,22 +44,45 @@ class ClarityCodeArtifactGradlePlugin : Plugin<Any> {
   }
 }
 
+/**
+ * Declares a CodeArtifact repository authenticated with an AWS profile.
+ *
+ * When [profile] is omitted the repository falls back to the service account credentials configured for the build, and
+ * to the `default` profile when there is none.
+ */
 // Kotlin DSL extension
 @Suppress("unused")
 fun RepositoryHandler.codeartifact(
   repoUrl: String,
-  profile: String = "default",
+  profile: String? = null,
   action: Action<in MavenArtifactRepository>? = null
+) = codeartifactRepository(repoUrl, null, profile, action)
+
+/**
+ * Declares a CodeArtifact repository authenticated with the static credentials of a service account, which take
+ * precedence over any profile configured for the build.
+ */
+@Suppress("unused")
+fun RepositoryHandler.codeartifact(
+  repoUrl: String,
+  credentials: CodeArtifactCredentials,
+  action: Action<in MavenArtifactRepository>? = null
+) = codeartifactRepository(repoUrl, credentials, null, action)
+
+private fun RepositoryHandler.codeartifactRepository(
+  repoUrl: String,
+  credentials: CodeArtifactCredentials?,
+  profile: String?,
+  action: Action<in MavenArtifactRepository>?
 ) {
   val logger = Logging.getLogger(RepositoryHandler::class.java)
-  logger.info("Configuring CodeArtifact repository: url={}, profile={}", repoUrl, profile)
-
   val ext = (this as ExtensionAware).extensions.extraProperties
 
   @Suppress("UNCHECKED_CAST")
   val serviceProvider = ext["codeartifactServiceProvider"] as Provider<CodeArtifactToken>
-  logger.info("Getting token for $repoUrl in profile $profile")
-  val token = serviceProvider.get().getToken(repoUrl, profile)
+  val token = CodeArtifactAuthenticator.getToken(
+    serviceProvider.get(), logger, repoUrl, credentials, profile, DEFAULT_PROFILE
+  )
   maven { mavenRepo ->
     mavenRepo.url = URI(repoUrl)
     mavenRepo.credentials { creds ->
