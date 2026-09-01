@@ -55,14 +55,34 @@ class CodeArtifactUrlTest {
 
   @Test
   void testOfWithDualstackUrl() throws MalformedURLException {
+    // given: the shape GetRepositoryEndpoint returns for --endpoint-type dualstack, which unlike the
+    // ipv4 one has no ".d." segment
     // when
-    CodeArtifactUrl url = CodeArtifactUrl.of("https://my-domain-111122223333.d.codeartifact.us-west-2.on.aws/maven/my-repo/");
+    CodeArtifactUrl url = CodeArtifactUrl.of("https://my-domain-111122223333.codeartifact.us-west-2.on.aws/maven/my-repo/");
 
     // then
     assertThat(url.getRegion()).isEqualTo("us-west-2");
     assertThat(url.getArtifactDomain()).isEqualTo("my-domain");
     assertThat(url.getArtifactOwner()).isEqualTo("111122223333");
     assertThat(url.getPath()).isEqualTo("/maven/my-repo/");
+  }
+
+  @Test
+  void testOfWithDualstackHostCarryingTheIpv4DotDSegment() {
+    // given: a host mixing the two shapes, which CodeArtifact never returns
+    assertThatThrownBy(
+      () -> CodeArtifactUrl.of("https://my-domain-111122223333.d.codeartifact.us-west-2.on.aws/maven/my-repo/"))
+      .isInstanceOf(MalformedURLException.class)
+      .hasMessageContaining("Not a valid CodeArtifact repository URL");
+  }
+
+  @Test
+  void testOfWithIpv4HostMissingTheDotDSegment() {
+    // given: the mirror image — the amazonaws.com suffix always carries ".d."
+    assertThatThrownBy(
+      () -> CodeArtifactUrl.of("https://my-domain-111122223333.codeartifact.us-west-2.amazonaws.com/maven/my-repo/"))
+      .isInstanceOf(MalformedURLException.class)
+      .hasMessageContaining("Not a valid CodeArtifact repository URL");
   }
 
   @Test

@@ -56,6 +56,35 @@ class CodeArtifactProjectPluginTest {
   }
 
   @Test
+  fun `plugin configures credentials for dualstack codeartifact repository URLs`() {
+    // Given: the host GetRepositoryEndpoint returns for --endpoint-type dualstack, which has no
+    // ".d." segment and ends in .on.aws rather than .amazonaws.com
+    val mockResponse = GetAuthorizationTokenResponse.builder()
+      .authorizationToken("mock-token")
+      .build()
+
+    mockkStatic(TokenFactory::class)
+    every { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any<String>()) } returns mockResponse
+
+    val project = ProjectBuilder.builder().build()
+    project.plugins.apply("ai.clarity.codeartifact")
+
+    val dualstackUrl = "https://my-domain-111122223333.codeartifact.us-west-2.on.aws/maven/my-repo/"
+
+    // When
+    project.repositories.maven { repo ->
+      repo.url = URI(dualstackUrl)
+    }
+    val repository = project.repositories.first() as MavenArtifactRepository
+
+    // Then: the repository is detected and authenticated, not silently left alone
+    assertThat(repository.credentials.username).isEqualTo("aws")
+    assertThat(repository.credentials.password).isEqualTo("mock-token")
+
+    verify(exactly = 1) { TokenFactory.getAuthorizationToken(any<CodeArtifactUrl>(), any<String>()) }
+  }
+
+  @Test
   fun `plugin ignores non-codeartifact repositories`() {
     // Given
     val project = ProjectBuilder.builder().build()

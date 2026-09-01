@@ -8,6 +8,16 @@ the token.
 The plugin automatically detects any Maven repository whose URL matches a CodeArtifact endpoint and injects the
 appropriate credentials — no extra configuration needed.
 
+Both public endpoint shapes that `aws codeartifact get-repository-endpoint` returns are recognised:
+
+| Endpoint type | Repository URL |
+|---|---|
+| `ipv4` | `https://{domain}-{owner}.d.codeartifact.{region}.amazonaws.com/{format}/{repository}/` |
+| `dualstack` | `https://{domain}-{owner}.codeartifact.{region}.on.aws/{format}/{repository}/` |
+
+Note the dualstack host has no `.d.` segment. VPC endpoints are not supported: they carry the domain and owner in the
+path rather than the host.
+
 ## Usage
 
 The plugin can be applied to either your project's `build.gradle(.kts)` file or to your `settings.gradle(.kts)` file.
