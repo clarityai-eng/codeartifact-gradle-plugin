@@ -111,7 +111,7 @@ Gradle cannot run inside the Claude Code sandbox — disable it for every `./gra
 
 ```kotlin
 // build.gradle.kts
-plugins { id("ai.clarity.codeartifact") version "0.2.0" }
+plugins { id("ai.clarity.codeartifact") version "0.2.1" }
 repositories {
   maven { url = uri("https://my-domain-111122223333.d.codeartifact.us-west-2.amazonaws.com/maven/my-repo/") }
 }
@@ -295,8 +295,10 @@ profile, since `ProfileCredentialsProvider` bypasses `AWS_ACCESS_KEY_ID`.
 
 Version lives in `gradle.properties` (a `-SNAPSHOT` between releases). `net.researchgate.release`
 drives the flow: `./gradlew release` un-snapshots, commits, tags, bumps to the next snapshot, and
-requires `main`. Pushing the resulting tag is what publishes to the portal. Latest published
-version: **0.2.0**. Dependabot bumps Gradle deps and Actions daily.
+requires `main`. Pushing the resulting tag is what publishes to the portal; the latest published
+version is the one shown on the
+[Gradle Plugin Portal](https://plugins.gradle.org/plugin/ai.clarity.codeartifact).
+Dependabot bumps Gradle deps and Actions daily.
 
 Never run `release` or `publishPlugins` from an agent session — both are outward-facing.
 
