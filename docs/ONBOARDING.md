@@ -111,7 +111,7 @@ Gradle cannot run inside the Claude Code sandbox — disable it for every `./gra
 
 ```kotlin
 // build.gradle.kts
-plugins { id("ai.clarity.codeartifact") version "0.1.2" }
+plugins { id("ai.clarity.codeartifact") version "0.2.0" }
 repositories {
   maven { url = uri("https://my-domain-111122223333.d.codeartifact.us-west-2.amazonaws.com/maven/my-repo/") }
 }
@@ -244,11 +244,11 @@ proves nothing about the current sources — pass `--rerun-tasks`.
 ### Manual end-to-end check without AWS
 
 ```bash
-./gradlew publishToMavenLocal            # publishes 0.1.3-SNAPSHOT
+./gradlew publishToMavenLocal            # publishes the current -SNAPSHOT
 # stub server returning {"authorizationToken":"stub-token"} on any request, e.g. on :18099
 # then, in a scratch project:
 #   settings.gradle.kts -> pluginManagement { repositories { mavenLocal(); gradlePluginPortal() } }
-#   build.gradle.kts    -> plugins { id("ai.clarity.codeartifact") version "0.1.3-SNAPSHOT" }
+#   build.gradle.kts    -> plugins { id("ai.clarity.codeartifact") version "<that snapshot>" }
 AWS_ENDPOINT_URL_CODEARTIFACT=http://127.0.0.1:18099 \
 AWS_SHARED_CREDENTIALS_FILE=/tmp/creds AWS_REGION=us-west-2 \
   ./gradlew help --info
@@ -276,10 +276,10 @@ profile, since `ProfileCredentialsProvider` bypasses `AWS_ACCESS_KEY_ID`.
 | `.github/workflows/build.yml` | `push` to `main` + every `pull_request` | JDK 21 (temurin, gradle cache) → `./gradlew build` → publishes the JUnit XML as a check. The `pull_request` trigger matters: the repo takes PRs from forks, and a fork push never fires `on: push` in the upstream repo. |
 | `.github/workflows/publish.yml` | push of any **tag** | JDK 21 → appends `gradle.publish.key/secret` from repo secrets to `gradle.properties` → `./gradlew publishPlugins` |
 
-Version lives in `gradle.properties` (`version=0.1.3-SNAPSHOT`). `net.researchgate.release`
+Version lives in `gradle.properties` (a `-SNAPSHOT` between releases). `net.researchgate.release`
 drives the flow: `./gradlew release` un-snapshots, commits, tags, bumps to the next snapshot, and
 requires `main`. Pushing the resulting tag is what publishes to the portal. Latest published
-version: **0.1.2**. Dependabot bumps Gradle deps and Actions daily.
+version: **0.2.0**. Dependabot bumps Gradle deps and Actions daily.
 
 Never run `release` or `publishPlugins` from an agent session — both are outward-facing.
 
@@ -298,12 +298,12 @@ Never run `release` or `publishPlugins` from an agent session — both are outwa
 
 ## 10. README discrepancies (as of 2026-09-01)
 
-1. Every example pins `version "0.1.1"`; the latest published version is **0.1.2**.
-2. Dualstack `.on.aws` endpoints are undocumented and not auto-detected (see §9).
+One left: dualstack `.on.aws` endpoints are undocumented and not auto-detected (see §9).
 
-Three earlier defects are fixed: the false "the helper is not available in `settings.gradle(.kts)`"
-note, the missing Kotlin imports in the `codeartifact(...)` snippets, and the resolution-order
-list that did not say steps 4-5 skip the helper path.
+Four earlier defects are fixed: the stale version pins in the examples, the false "the helper is
+not available in `settings.gradle(.kts)`" note, the missing Kotlin imports in the
+`codeartifact(...)` snippets, and the resolution-order list that did not say steps 4-5 skip the
+helper path.
 
 Everything else in the README (automatic detection, publishing repositories, the profile
 mechanisms, the service-account credentials, the `?profile=` stripping, the `gradle.properties` +
