@@ -139,5 +139,4 @@ experiments):
 
 ## README caveats
 
-One defect left — fix it only if asked: all examples pin `version "0.1.1"`, while the latest
-published version is **0.1.2** (the working version here is `0.1.3-SNAPSHOT`).
+None known. The examples pin the current release; re-check them after every version bump.
