@@ -213,9 +213,11 @@ Two asymmetries worth knowing, both measured:
 **Match the command-line override to the form you committed.** A Gradle property is overridden
 with `-P`, a `systemProp.` one with `-D`. Because the Gradle property outranks the system
 property, a `-Dcodeartifact.profile=ci` against a committed plain `codeartifact.profile=dev` does
-*not* override it. That combination logs a warning naming the setting rather than silently
-authenticating with the wrong profile — the values are deliberately left out of the message so a
-shadowed `codeartifact.secretAccessKey` cannot leak.
+*not* override it. The same goes for the environment variable when no system property is set: a
+`CODEARTIFACT_PROFILE` export loses to a plain `codeartifact.profile` entry. Both combinations log
+a warning naming the setting rather than silently authenticating with the wrong profile — the
+values are deliberately left out of the message so a shadowed `codeartifact.secretAccessKey` (or
+`CODEARTIFACT_SECRET_ACCESS_KEY`) cannot leak.
 
 Recommended pattern for teams: commit `codeartifact.profile=dev` and let CI override with
 `-Pcodeartifact.profile=ci`. Do not mix it with `?profile=`, which would defeat the override.
@@ -237,8 +239,8 @@ reaches build scans, caches and logs. What the plugin does guarantee, all verifi
 ## 6. Testing
 
 ```bash
-./gradlew test --rerun-tasks            # 98 tests, all green
-./gradlew functionalTest --rerun-tasks  # 101 tests, all green
+./gradlew test --rerun-tasks            # 102 tests, all green
+./gradlew functionalTest --rerun-tasks  # 106 tests, all green
 ./gradlew build                         # both + validatePlugins; ~4m from clean
 ```
 
@@ -309,7 +311,8 @@ Never run `release` or `publishPlugins` from an agent session — both are outwa
 | Wrong profile used by `codeartifact(url)` | With no profile it falls back to `"default"`; `codeartifact.profile` is ignored on that path, though build-wide service credentials are honoured. |
 | `Incomplete CodeArtifact service credentials: …` | Exactly one of `codeartifact.accessKeyId` / `codeartifact.secretAccessKey` is set, in any of the three sources. Set both, or unset both. |
 | `The codeartifact.X Gradle property takes precedence over the codeartifact.X system property` | A plain `gradle.properties` entry is shadowing a `-D` / `systemProp.` value. Override with `-P` instead, or drop the plain entry. |
-| A `-D` override stopped working after upgrading the plugin | Same cause as the row above: the plain Gradle property form is now read, and it outranks the system property. |
+| `The codeartifact.X Gradle property takes precedence over the CODEARTIFACT_X environment variable` | A plain `gradle.properties` entry is shadowing an exported environment variable. Override with `-P` instead, or drop the plain entry. |
+| A `-D` override or a `CODEARTIFACT_*` export stopped working after upgrading the plugin | Same cause as the rows above: the plain Gradle property form is now read, and it outranks both. |
 | `Timeout waiting to lock journal cache` | Gradle running inside the Claude Code sandbox. Disable the sandbox. |
 | Credentials not injected on a CodeArtifact URL | The repository already had a username or password; the plugin skips those. |
 

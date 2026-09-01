@@ -580,6 +580,26 @@ class ClarityCodeartifactPluginFunctionalTest {
 
     @ParameterizedTest(name = "Gradle {0}")
     @MethodSource("ai.clarity.codeartifact.ClarityCodeartifactPluginFunctionalTest#gradleVersions")
+    fun `a plain gradle property shadows the environment variable and says so`(gradleVersion: String) {
+      // Given: a plain default in gradle.properties and a CODEARTIFACT_PROFILE that used to win before the plain form was read
+      gradlePropertiesFile.writeText("codeartifact.profile=dev")
+
+      // When: running the build with the environment variable pointing elsewhere
+      val result = createRunner(gradleVersion)
+        .withEnvironment(System.getenv() + ("CODEARTIFACT_PROFILE" to "ci"))
+        .withArguments("help", "--info")
+        .buildAndFail()
+
+      // Then: the Gradle property wins, and the build warns that the environment variable is being ignored
+      assertThat(result.output).containsIgnoringCase("Getting token for $codeArtifactUrl in profile dev")
+      assertThat(result.output).contains(
+        "The codeartifact.profile Gradle property takes precedence over the CODEARTIFACT_PROFILE environment variable"
+      )
+      assertThat(result.output).contains("Override the Gradle property with -Pcodeartifact.profile")
+    }
+
+    @ParameterizedTest(name = "Gradle {0}")
+    @MethodSource("ai.clarity.codeartifact.ClarityCodeartifactPluginFunctionalTest#gradleVersions")
     fun `command line system property overrides the gradle properties default`(gradleVersion: String) {
       // Given: a project-wide default profile and a CI-style command line override
       gradlePropertiesFile.writeText("systemProp.codeartifact.profile=dev")

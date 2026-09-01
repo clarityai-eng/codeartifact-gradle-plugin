@@ -318,7 +318,9 @@ Keep in mind:
   a committed plain `codeartifact.profile` is ignored — the build warns when that happens
   rather than authenticating with the wrong profile silently.
 - Neither `CODEARTIFACT_PROFILE` nor any other environment variable takes precedence over a
-  profile defined in `gradle.properties`.
+  profile defined in `gradle.properties`. When a plain entry shadows a differently-valued
+  `CODEARTIFACT_PROFILE`, the build warns, since that usually means an exported override has
+  stopped working.
 - A developer can override the project default for their machine in
   `~/.gradle/gradle.properties`, which takes precedence over the project file.
 - Do not combine this pattern with `?profile=` in the repository URL: the query param has
@@ -426,8 +428,9 @@ Every `codeartifact.*` setting in steps 3 and 4 is looked up in three places, in
 3. the **environment variable** — `CODEARTIFACT_PROFILE`, `CODEARTIFACT_ACCESS_KEY_ID`, …
 
 The first place that holds the setting wins, even when the value is blank; a blank value then resolves to "not
-configured" rather than falling through to the next place. When a Gradle property shadows a system property holding a
-different value, the build warns, because that is usually a `-D` override that has stopped working.
+configured" rather than falling through to the next place. When a Gradle property shadows a system property — or, with
+no system property set, an environment variable — holding a different value, the build warns, because that is usually a
+`-D` or exported override that has stopped working.
 
 > **Note:** step 4 only applies to the repositories detected automatically. A repository declared with the
 > `codeartifact()` helper and no explicit profile falls back to the `default` profile instead, so `codeartifact.profile`

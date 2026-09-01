@@ -126,10 +126,54 @@ class SettingLookupTest {
     val lookup = lookupOf(projectDir, "$PROFILE=dev")
 
     // When
-    lookup.readProfile()
+    lookup.read(PROFILE, ABSENT_ENV)
 
     // Then
     verify(exactly = 0) { logger.warn(SettingLookup.shadowedSystemPropertyWarning(PROFILE)) }
+    verify(exactly = 0) { logger.warn(SettingLookup.shadowedEnvironmentVariableWarning(PROFILE, ABSENT_ENV)) }
+  }
+
+  @Test
+  fun `a gradle property shadowing a different environment variable warns once`(@TempDir projectDir: File) {
+    // Given: PATH stands in for CODEARTIFACT_PROFILE, being the one environment variable a unit test can count on
+    val lookup = lookupOf(projectDir, "$PROFILE=dev")
+
+    // When: the configurer reads the same setting once per repository
+    lookup.read(PROFILE, "PATH")
+    lookup.read(PROFILE, "PATH")
+
+    // Then: the gradle property wins, and the shadowed environment variable is warned about once
+    assertThat(lookup.read(PROFILE, "PATH")).isEqualTo("dev")
+    verify(exactly = 1) { logger.warn(SettingLookup.shadowedEnvironmentVariableWarning(PROFILE, "PATH")) }
+  }
+
+  @Test
+  fun `only the system property warning is logged when both lower sources are shadowed`(@TempDir projectDir: File) {
+    // Given: the system property outranked the environment variable before this plugin read Gradle properties,
+    // so it is the only override that actually stopped working
+    System.setProperty(PROFILE, "ci")
+    val lookup = lookupOf(projectDir, "$PROFILE=dev")
+
+    // When
+    lookup.read(PROFILE, "PATH")
+
+    // Then
+    verify(exactly = 1) { logger.warn(SettingLookup.shadowedSystemPropertyWarning(PROFILE)) }
+    verify(exactly = 0) { logger.warn(SettingLookup.shadowedEnvironmentVariableWarning(PROFILE, "PATH")) }
+  }
+
+  @Test
+  fun `no environment variable warning when the system property agrees with the gradle property`(@TempDir projectDir: File) {
+    // Given: the environment variable differs, but it was already shadowed by the system property before
+    System.setProperty(PROFILE, "dev")
+    val lookup = lookupOf(projectDir, "$PROFILE=dev")
+
+    // When
+    lookup.read(PROFILE, "PATH")
+
+    // Then
+    verify(exactly = 0) { logger.warn(SettingLookup.shadowedSystemPropertyWarning(PROFILE)) }
+    verify(exactly = 0) { logger.warn(SettingLookup.shadowedEnvironmentVariableWarning(PROFILE, "PATH")) }
   }
 
   @Test
@@ -141,8 +185,20 @@ class SettingLookupTest {
     )
   }
 
+  @Test
+  fun `the environment variable warning never names the value either`() {
+    assertThat(
+      SettingLookup.shadowedEnvironmentVariableWarning("codeartifact.secretAccessKey", "CODEARTIFACT_SECRET_ACCESS_KEY")
+    ).isEqualTo(
+      "The codeartifact.secretAccessKey Gradle property takes precedence over the CODEARTIFACT_SECRET_ACCESS_KEY " +
+        "environment variable, which holds a different value and is being ignored. Override the Gradle property " +
+        "with -Pcodeartifact.secretAccessKey, or remove it to let the environment variable apply."
+    )
+  }
+
   private companion object {
     const val PROFILE = "codeartifact.profile"
     const val PROFILE_ENV = "CODEARTIFACT_PROFILE"
+    const val ABSENT_ENV = "CODEARTIFACT_ABSENT_ENVIRONMENT_VARIABLE"
   }
 }

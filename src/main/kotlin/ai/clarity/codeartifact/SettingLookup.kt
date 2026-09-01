@@ -46,9 +46,11 @@ internal fun interface SettingLookup {
      * A source that holds a value wins even when that value is blank, and a blank value resolves to `null`: a setting
      * left empty on purpose disables the ones below it rather than falling through to them.
      *
-     * Because the Gradle property now outranks the system property, a `-D` on the command line no longer overrides a
-     * plain entry in `gradle.properties` the way it overrides a `systemProp.` one. That reads as the override being
-     * ignored, so [logger] gets a warning whenever the two disagree.
+     * Because the Gradle property now outranks the sources that used to win, a `-D` on the command line or an
+     * exported environment variable no longer overrides a plain entry in `gradle.properties`. That reads as the
+     * override being ignored, so [logger] gets a warning whenever the Gradle property disagrees with the source it
+     * shadows: the system property, or — only when no system property is set, since the system property already
+     * outranked the environment before — the environment variable.
      */
     fun of(providers: ProviderFactory, logger: Logger): SettingLookup {
       val warned = ConcurrentHashMap.newKeySet<String>()
@@ -56,15 +58,21 @@ internal fun interface SettingLookup {
       return SettingLookup { property, environmentVariable ->
         val gradleProperty = providers.gradleProperty(property).orNull
         val systemProperty = providers.systemProperty(property).orNull
+        // Both resolution and the warning need the environment only when there is no system property
+        val environment = if (systemProperty == null) providers.environmentVariable(environmentVariable).orNull else null
 
-        if (gradleProperty != null && systemProperty != null && gradleProperty != systemProperty &&
-          warned.add(property)
-        ) {
-          logger.warn(shadowedSystemPropertyWarning(property))
+        val shadowingWarning = when {
+          gradleProperty == null -> null
+          systemProperty != null && systemProperty != gradleProperty -> shadowedSystemPropertyWarning(property)
+          environment != null && environment != gradleProperty ->
+            shadowedEnvironmentVariableWarning(property, environmentVariable)
+          else -> null
+        }
+        if (shadowingWarning != null && warned.add(property)) {
+          logger.warn(shadowingWarning)
         }
 
-        (gradleProperty ?: systemProperty ?: providers.environmentVariable(environmentVariable).orNull)
-          ?.takeIf { it.isNotBlank() }
+        (gradleProperty ?: systemProperty ?: environment)?.takeIf { it.isNotBlank() }
       }
     }
 
@@ -75,5 +83,13 @@ internal fun interface SettingLookup {
       "The $property Gradle property takes precedence over the $property system property, which holds a different " +
         "value and is being ignored. Override the Gradle property with -P$property, or remove it to let the system " +
         "property apply."
+
+    /**
+     * The values are deliberately left out: a shadowed `CODEARTIFACT_SECRET_ACCESS_KEY` would print the secret.
+     */
+    fun shadowedEnvironmentVariableWarning(property: String, environmentVariable: String) =
+      "The $property Gradle property takes precedence over the $environmentVariable environment variable, which " +
+        "holds a different value and is being ignored. Override the Gradle property with -P$property, or remove it " +
+        "to let the environment variable apply."
   }
 }
