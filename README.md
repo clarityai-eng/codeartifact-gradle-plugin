@@ -91,8 +91,8 @@ publishing {
 ### Explicit `codeartifact` method
 
 Instead of relying on automatic detection via `maven { url ... }`, you can use the `codeartifact()` helper method
-directly on the `repositories` block. This method accepts the repository URL, an optional profile name, and an optional
-configuration closure/action.
+directly on the `repositories` block. This method accepts the repository URL, an optional profile name or the
+[credentials of a service account](#service-account-credentials), and an optional configuration closure/action.
 
 > **Note:** The `Explicit codeartifact method` can only be used inside the `build.gradle` or `build.gradle.kts` files.
 
@@ -109,8 +109,20 @@ repositories {
     codeartifact("https://domain-id.d.codeartifact.eu-central-1.amazonaws.com/maven/repository/", "prod") {
         name = "myCodeArtifactRepo"
     }
+
+    // With the credentials of a service account instead of a profile:
+    codeartifact(
+        "https://domain-id.d.codeartifact.eu-central-1.amazonaws.com/maven/repository/",
+        CodeArtifactCredentials.of(
+            providers.gradleProperty("codeArtifactAccessKeyId").get(),
+            providers.gradleProperty("codeArtifactSecretAccessKey").get()
+        )
+    )
 }
 ```
+
+> **Note:** in `build.gradle.kts` the helper and the credentials class have to be imported:
+> `import ai.clarity.codeartifact.codeartifact` and `import ai.clarity.codeartifact.CodeArtifactCredentials`.
 
 ### Groovy DSL
 
@@ -125,6 +137,12 @@ repositories {
     codeartifact('https://domain-id.d.codeartifact.eu-central-1.amazonaws.com/maven/repository/', 'prod') {
         name = 'myCodeArtifactRepo'
     }
+
+    // With the credentials of a service account instead of a profile:
+    codeartifact('https://domain-id.d.codeartifact.eu-central-1.amazonaws.com/maven/repository/', [
+            accessKeyId    : providers.gradleProperty('codeArtifactAccessKeyId').get(),
+            secretAccessKey: providers.gradleProperty('codeArtifactSecretAccessKey').get()
+    ])
 }
 ```
 
@@ -296,15 +314,100 @@ Keep in mind:
 - Do not combine this pattern with `?profile=` in the repository URL: the query param has
   the highest precedence and would defeat the override.
 
-## Profile resolution order
+## Service account credentials
 
-The profile is resolved in the following order of precedence:
+On CI/CD, or on any machine without an `~/.aws/credentials` file, the plugin can authenticate with the static access
+keys of a service account — an IAM user or a set of temporary credentials — instead of an AWS profile.
 
-1. `?profile=` query parameter in the repository URL
-2. `codeartifact.profile` Java system property
-3. `CODEARTIFACT_PROFILE` environment variable
-4. `AWS_PROFILE` environment variable (handled by the AWS SDK)
-5. Falls back to `default`
+### For the whole build
+
+Configure the access key id and the secret access key. Each value is read from its system property first, and from its
+environment variable second:
+
+| Value             | System property                | Environment variable             | Required                       |
+|-------------------|--------------------------------|----------------------------------|--------------------------------|
+| Access key id     | `codeartifact.accessKeyId`     | `CODEARTIFACT_ACCESS_KEY_ID`     | Yes                            |
+| Secret access key | `codeartifact.secretAccessKey` | `CODEARTIFACT_SECRET_ACCESS_KEY` | Yes                            |
+| Session token     | `codeartifact.sessionToken`    | `CODEARTIFACT_SESSION_TOKEN`     | Only for temporary credentials |
+
+In a CI/CD pipeline, export them from the secret store of your platform:
+
+```bash
+export CODEARTIFACT_ACCESS_KEY_ID=<your access key id>
+export CODEARTIFACT_SECRET_ACCESS_KEY=<your secret access key>
+```
+
+On a developer machine, declare them in `~/.gradle/gradle.properties`, which lives outside the project:
+
+```properties
+systemProp.codeartifact.accessKeyId=<your access key id>
+systemProp.codeartifact.secretAccessKey=<your secret access key>
+```
+
+They then apply to every CodeArtifact repository of the build, including the ones declared in `settings.gradle(.kts)`,
+and they take precedence over the `codeartifact.profile` / `CODEARTIFACT_PROFILE` configuration.
+
+> **Warning:** never commit these values to the project `gradle.properties`. There is deliberately no `?accessKeyId=`
+> query param either, because the repository URL ends up in build scans, caches and logs. The plugin only writes a
+> masked access key id (`AKIA************MPLE`) to the build log, never the secret.
+
+Setting only one of the two required values fails the build with an explicit message, instead of silently falling back
+to another set of credentials.
+
+### For a single repository
+
+When repositories belong to different AWS accounts, pass the credentials to the `codeartifact()` helper. Read the
+values from Gradle properties or from the environment rather than hardcoding them in the build script.
+
+#### Kotlin DSL
+
+```kotlin
+import ai.clarity.codeartifact.CodeArtifactCredentials
+import ai.clarity.codeartifact.codeartifact
+
+repositories {
+    codeartifact(
+        "https://domain-id.d.codeartifact.eu-central-1.amazonaws.com/maven/repository/",
+        CodeArtifactCredentials.of(
+            providers.gradleProperty("codeArtifactAccessKeyId").get(),
+            providers.gradleProperty("codeArtifactSecretAccessKey").get()
+        )
+    ) {
+        name = "myCodeArtifactRepo"
+    }
+}
+```
+
+#### Groovy DSL
+
+```groovy
+repositories {
+    codeartifact('https://domain-id.d.codeartifact.eu-central-1.amazonaws.com/maven/repository/', [
+            accessKeyId    : providers.gradleProperty('codeArtifactAccessKeyId').get(),
+            secretAccessKey: providers.gradleProperty('codeArtifactSecretAccessKey').get()
+            // add a sessionToken entry only for temporary credentials
+    ]) {
+        name = 'myCodeArtifactRepo'
+    }
+}
+```
+
+> **Note:** as for the profile, the `codeartifact()` helper is not available in `settings.gradle(.kts)`. Use the
+> build-wide configuration above for the repositories declared there.
+
+## Credentials resolution order
+
+The plugin uses the configuration closest to the repository, and prefers service account credentials over profiles at
+the same level:
+
+1. Credentials passed to the `codeartifact()` helper
+2. Profile passed to the `codeartifact()` helper, or `?profile=` query parameter in the repository URL
+3. `codeartifact.accessKeyId` and `codeartifact.secretAccessKey`, each read from the system property first and from the
+   matching `CODEARTIFACT_*` environment variable second
+4. `codeartifact.profile` Java system property
+5. `CODEARTIFACT_PROFILE` environment variable
+6. The AWS SDK default credentials provider chain (`AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, instance roles, …) for the
+   repositories detected automatically, and the `default` profile for the ones declared with the `codeartifact()` helper
 
 ## License
 

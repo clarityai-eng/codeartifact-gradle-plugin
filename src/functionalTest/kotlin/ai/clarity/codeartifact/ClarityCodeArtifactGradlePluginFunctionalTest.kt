@@ -34,6 +34,49 @@ import java.net.InetSocketAddress
 private const val codeArtifactUrl =
   "https://my-domain-111122223333.d.codeartifact.us-west-2.amazonaws.com/maven/my-repo/"
 
+private const val serviceUserAccessKeyId = "AKIAIOSFODNN7EXAMPLE"
+
+// How the plugin is expected to redact the access key id in the build log
+private const val maskedServiceUserAccessKeyId = "AKIA************MPLE"
+
+/**
+ * Stub of the CodeArtifact GetAuthorizationToken endpoint, listening on a random local port.
+ */
+private fun stubCodeArtifactTokenEndpoint(): HttpServer =
+  HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+    createContext("/") { exchange ->
+      val bytes = """{"authorizationToken":"stub-token","expiration":1893456000}""".toByteArray()
+      exchange.responseHeaders.add("Content-Type", "application/json")
+      exchange.sendResponseHeaders(200, bytes.size.toLong())
+      exchange.responseBody.use { it.write(bytes) }
+    }
+    start()
+  }
+
+/**
+ * Build script declaring [repoUrl] as a plain Maven repository, so that the plugin detects it, plus a task printing the
+ * credentials the plugin ended up injecting.
+ */
+private fun printRepoCredentialsBuild(repoUrl: String) = $$"""
+  plugins {
+      id("ai.clarity.codeartifact")
+  }
+
+  repositories {
+      maven {
+          url = uri("$$repoUrl")
+      }
+  }
+
+  tasks.register("printRepoCredentials") {
+      doLast {
+          val repo = project.repositories.first() as org.gradle.api.artifacts.repositories.MavenArtifactRepository
+          println("username=${repo.credentials.username}")
+          println("password=${repo.credentials.password}")
+      }
+  }
+  """.trimIndent()
+
 /**
  * Functional tests for the 'ai.clarity.codeartifact' plugin using Gradle TestKit.
  *
@@ -552,17 +595,7 @@ class ClarityCodeartifactPluginFunctionalTest {
     @BeforeEach
     fun setUp() {
       settingsFile.writeText("""rootProject.name = "test-token-endpoint"""")
-
-      // Stub of the CodeArtifact GetAuthorizationToken endpoint
-      server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
-      server.createContext("/") { exchange ->
-        val body = """{"authorizationToken":"stub-token","expiration":1893456000}"""
-        val bytes = body.toByteArray()
-        exchange.responseHeaders.add("Content-Type", "application/json")
-        exchange.sendResponseHeaders(200, bytes.size.toLong())
-        exchange.responseBody.use { it.write(bytes) }
-      }
-      server.start()
+      server = stubCodeArtifactTokenEndpoint()
     }
 
     @AfterEach
@@ -573,27 +606,7 @@ class ClarityCodeartifactPluginFunctionalTest {
     @Test
     fun `plugin fetches the token from the codeartifact endpoint and configures credentials`() {
       // Given: a build file relying on automatic detection of the CodeArtifact URL
-      buildFile.writeText(
-        $$"""
-        plugins {
-            id("ai.clarity.codeartifact")
-        }
-
-        repositories {
-            maven {
-                url = uri("$$codeArtifactUrl")
-            }
-        }
-
-        tasks.register("printRepoCredentials") {
-            doLast {
-                val repo = project.repositories.first() as org.gradle.api.artifacts.repositories.MavenArtifactRepository
-                println("username=${repo.credentials.username}")
-                println("password=${repo.credentials.password}")
-            }
-        }
-        """.trimIndent()
-      )
+      buildFile.writeText(printRepoCredentialsBuild(codeArtifactUrl))
 
       // The AWS SDK resolves the service endpoint and static credentials from these variables,
       // so the token request hits the local stub instead of AWS
@@ -619,5 +632,209 @@ class ClarityCodeartifactPluginFunctionalTest {
       assertThat(result.output).contains("password=stub-token")
       assertThat(result.task(":printRepoCredentials")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
     }
+  }
+
+  @Nested
+  inner class ServiceCredentialsFunctionalTest {
+
+    @TempDir
+    lateinit var projectDir: File
+
+    private val buildFile by lazy { File(projectDir, "build.gradle.kts") }
+    private val groovyBuildFile by lazy { File(projectDir, "build.gradle") }
+    private val settingsFile by lazy { File(projectDir, "settings.gradle.kts") }
+    private val gradlePropertiesFile by lazy { File(projectDir, "gradle.properties") }
+
+    private lateinit var server: HttpServer
+
+    @BeforeEach
+    fun setUp() {
+      settingsFile.writeText("""rootProject.name = "test-service-credentials"""")
+      server = stubCodeArtifactTokenEndpoint()
+    }
+
+    @AfterEach
+    fun tearDown() {
+      server.stop(0)
+    }
+
+    @Test
+    fun `service credentials from the environment are used to fetch the token`() {
+      // Given: a repository detected automatically, with no AWS credentials available to the SDK
+      buildFile.writeText(printRepoCredentialsBuild(codeArtifactUrl))
+
+      // When: only the CodeArtifact specific variables carry the service account credentials
+      val result = runnerWithoutAwsCredentials()
+        .withEnvironment(
+          environmentWithoutAwsCredentials(
+            "AWS_ENDPOINT_URL_CODEARTIFACT" to "http://127.0.0.1:${server.address.port}",
+            "CODEARTIFACT_ACCESS_KEY_ID" to serviceUserAccessKeyId,
+            "CODEARTIFACT_SECRET_ACCESS_KEY" to "service-user-secret"
+          )
+        )
+        .withArguments("printRepoCredentials", "--info")
+        .build()
+
+      // Then: the token is fetched with the service credentials and the access key id is masked in the log
+      assertThat(result.output).contains("with the service credentials $maskedServiceUserAccessKeyId")
+      assertThat(result.output).doesNotContain("service-user-secret")
+      assertThat(result.output).contains("username=aws")
+      assertThat(result.output).contains("password=stub-token")
+      assertThat(result.task(":printRepoCredentials")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    }
+
+    @Test
+    fun `service credentials from gradle properties are used to fetch the token`() {
+      // Given: the service account credentials declared as system properties of the build
+      buildFile.writeText(printRepoCredentialsBuild(codeArtifactUrl))
+      gradlePropertiesFile.writeText(
+        """
+        systemProp.codeartifact.accessKeyId=$serviceUserAccessKeyId
+        systemProp.codeartifact.secretAccessKey=service-user-secret
+        """.trimIndent()
+      )
+
+      // When: running the build with no AWS credentials in the environment
+      val result = runnerWithoutAwsCredentials()
+        .withEnvironment(
+          environmentWithoutAwsCredentials("AWS_ENDPOINT_URL_CODEARTIFACT" to "http://127.0.0.1:${server.address.port}")
+        )
+        .withArguments("printRepoCredentials", "--info")
+        .build()
+
+      // Then: the repository ends up configured with the token issued for the service account
+      assertThat(result.output).contains("with the service credentials $maskedServiceUserAccessKeyId")
+      assertThat(result.output).contains("password=stub-token")
+    }
+
+    @Test
+    fun `a repository profile keeps precedence over the service credentials of the build`() {
+      // Given: service credentials for the whole build and an explicit profile on the repository
+      buildFile.writeText(printRepoCredentialsBuild("$codeArtifactUrl?profile=url-profile"))
+      gradlePropertiesFile.writeText(
+        """
+        systemProp.codeartifact.accessKeyId=$serviceUserAccessKeyId
+        systemProp.codeartifact.secretAccessKey=service-user-secret
+        """.trimIndent()
+      )
+
+      // When: running the build (expecting a failure because the profile does not exist)
+      val result = runnerWithoutAwsCredentials()
+        .withEnvironment(
+          environmentWithoutAwsCredentials("AWS_ENDPOINT_URL_CODEARTIFACT" to "http://127.0.0.1:${server.address.port}")
+        )
+        .withArguments("printRepoCredentials", "--info")
+        .buildAndFail()
+
+      // Then: the profile named on the repository is the one used
+      assertThat(result.output).containsIgnoringCase("in profile url-profile")
+      assertThat(result.output).doesNotContain("with the service credentials")
+    }
+
+    @Test
+    fun `incomplete service credentials fail with a descriptive error`() {
+      // Given: only half of the service account credentials
+      buildFile.writeText(printRepoCredentialsBuild(codeArtifactUrl))
+      gradlePropertiesFile.writeText("systemProp.codeartifact.accessKeyId=$serviceUserAccessKeyId")
+
+      // When: running the build
+      val result = runnerWithoutAwsCredentials()
+        .withArguments("printRepoCredentials")
+        .buildAndFail()
+
+      // Then: the build explains which half is missing
+      assertThat(result.output).contains("Incomplete CodeArtifact service credentials")
+      assertThat(result.output).contains("codeartifact.secretAccessKey")
+      assertThat(result.output).contains("CODEARTIFACT_SECRET_ACCESS_KEY")
+    }
+
+    @ParameterizedTest(name = "Gradle {0}")
+    @MethodSource("ai.clarity.codeartifact.ClarityCodeartifactPluginFunctionalTest#gradleVersions")
+    fun `kotlin dsl codeartifact method accepts service credentials`(gradleVersion: String) {
+      // Given: a build declaring the credentials on the repository itself
+      buildFile.writeText(
+        """
+        import ai.clarity.codeartifact.CodeArtifactCredentials
+        import ai.clarity.codeartifact.codeartifact
+
+        plugins {
+            id("ai.clarity.codeartifact")
+        }
+
+        repositories {
+            codeartifact(
+                "$codeArtifactUrl",
+                CodeArtifactCredentials.of("$serviceUserAccessKeyId", "service-user-secret")
+            )
+        }
+        """.trimIndent()
+      )
+
+      // When: running the build (expecting a failure because the credentials are not real)
+      val result = GradleRunner.create()
+        .withGradleVersion(gradleVersion)
+        .forwardOutput()
+        .withPluginClasspath()
+        .withProjectDir(projectDir)
+        .withArguments("help", "--info")
+        .buildAndFail()
+
+      // Then: the token request uses the declared credentials and the secret never reaches the log
+      assertThat(result.output).contains("with the service credentials $maskedServiceUserAccessKeyId")
+      assertThat(result.output).doesNotContain("service-user-secret")
+    }
+
+    @ParameterizedTest(name = "Gradle {0}")
+    @MethodSource("ai.clarity.codeartifact.ClarityCodeartifactPluginFunctionalTest#gradleVersions")
+    fun `groovy dsl codeartifact method accepts service credentials as a map`(gradleVersion: String) {
+      // Given: a Groovy build declaring the credentials on the repository itself
+      settingsFile.delete()
+      File(projectDir, "settings.gradle").writeText("rootProject.name = 'test-service-credentials-groovy'")
+      groovyBuildFile.writeText(
+        """
+        plugins {
+            id 'ai.clarity.codeartifact'
+        }
+
+        repositories {
+            codeartifact('$codeArtifactUrl', [
+                accessKeyId    : '$serviceUserAccessKeyId',
+                secretAccessKey: 'service-user-secret'
+            ]) {
+                name = 'serviceUserRepo'
+            }
+        }
+        """.trimIndent()
+      )
+
+      // When: running the build (expecting a failure because the credentials are not real)
+      val result = GradleRunner.create()
+        .withGradleVersion(gradleVersion)
+        .forwardOutput()
+        .withPluginClasspath()
+        .withProjectDir(projectDir)
+        .withArguments("help", "--info")
+        .buildAndFail()
+
+      // Then: the token request uses the declared credentials and the secret never reaches the log
+      assertThat(result.output).contains("with the service credentials $maskedServiceUserAccessKeyId")
+      assertThat(result.output).doesNotContain("service-user-secret")
+    }
+
+    private fun runnerWithoutAwsCredentials(): GradleRunner = GradleRunner.create()
+      .forwardOutput()
+      .withPluginClasspath()
+      .withProjectDir(projectDir)
+
+    private fun environmentWithoutAwsCredentials(vararg entries: Pair<String, String>): Map<String, String> =
+      System.getenv().minus(
+        setOf(
+          "AWS_PROFILE",
+          "CODEARTIFACT_PROFILE",
+          "AWS_ACCESS_KEY_ID",
+          "AWS_SECRET_ACCESS_KEY",
+          "AWS_SESSION_TOKEN"
+        )
+      ) + entries
   }
 }

@@ -35,7 +35,20 @@ public class CodeArtifactToken implements BuildService<None> {
     CodeArtifactUrl codeArtifactUrl = CodeArtifactUrl.of(uri);
 
     return tokensCache
-      .computeIfAbsent(profile + "@" + uri, k -> TokenFactory.getAuthorizationToken(codeArtifactUrl, profile).authorizationToken());
+      .computeIfAbsent("profile:" + profile + "@" + uri,
+        k -> TokenFactory.getAuthorizationToken(codeArtifactUrl, profile).authorizationToken());
+  }
+
+  public String getToken(URI uri, CodeArtifactCredentials credentials) throws MalformedURLException {
+    return getToken(uri.toString(), credentials);
+  }
+
+  public String getToken(String uri, CodeArtifactCredentials credentials) throws MalformedURLException {
+    CodeArtifactUrl codeArtifactUrl = CodeArtifactUrl.of(uri);
+
+    return tokensCache
+      .computeIfAbsent(credentials.cacheKey() + "@" + uri,
+        k -> TokenFactory.getAuthorizationToken(codeArtifactUrl, credentials).authorizationToken());
   }
 
   @Override

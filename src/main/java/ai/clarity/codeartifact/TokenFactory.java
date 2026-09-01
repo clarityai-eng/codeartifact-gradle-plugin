@@ -16,7 +16,9 @@
 package ai.clarity.codeartifact;
 
 import java.net.MalformedURLException;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.codeartifact.CodeartifactClient;
 import software.amazon.awssdk.services.codeartifact.CodeartifactClientBuilder;
@@ -29,12 +31,29 @@ public class TokenFactory {
     return getAuthorizationToken(CodeArtifactUrl.of(codeArtifactUrl), profileName);
   }
 
+  /**
+   * Requests the token with the given AWS profile, or with the default credentials provider chain when
+   * {@code profileName} is {@code null}.
+   */
   public static GetAuthorizationTokenResponse getAuthorizationToken(CodeArtifactUrl codeArtifactUrl, String profileName) {
+    return requestToken(codeArtifactUrl, profileName == null ? null : ProfileCredentialsProvider.create(profileName));
+  }
+
+  /**
+   * Requests the token with the static credentials of a service account, bypassing the local AWS profiles.
+   */
+  public static GetAuthorizationTokenResponse getAuthorizationToken(CodeArtifactUrl codeArtifactUrl,
+                                                                    CodeArtifactCredentials credentials) {
+    return requestToken(codeArtifactUrl, StaticCredentialsProvider.create(credentials.toAwsCredentials()));
+  }
+
+  private static GetAuthorizationTokenResponse requestToken(CodeArtifactUrl codeArtifactUrl,
+                                                            AwsCredentialsProvider credentialsProvider) {
     CodeartifactClientBuilder builder = CodeartifactClient.builder()
       .region(Region.of(codeArtifactUrl.getRegion()));
 
-    if (profileName != null) {
-      builder = builder.credentialsProvider(ProfileCredentialsProvider.create(profileName));
+    if (credentialsProvider != null) {
+      builder = builder.credentialsProvider(credentialsProvider);
     }
     CodeartifactClient client = builder.build();
 

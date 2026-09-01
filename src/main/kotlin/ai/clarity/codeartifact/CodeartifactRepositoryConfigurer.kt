@@ -17,6 +17,7 @@
 
 package ai.clarity.codeartifact
 
+import ai.clarity.codeartifact.CodeArtifactAuthenticator.DEFAULT_PROFILE
 import groovy.lang.Closure
 import org.gradle.api.artifacts.dsl.RepositoryHandler
 import org.gradle.api.artifacts.repositories.MavenArtifactRepository
@@ -46,12 +47,41 @@ internal object CodeartifactRepositoryConfigurer {
     ext["codeartifactServiceProvider"] = serviceProvider
 
     if (!ext.has("codeartifact")) {
-      logger.debug("Adding codeartifact(String, String, Closure) method to RepositoryHandler via extraProperties")
+      logger.debug("Adding the codeartifact(url, profile|credentials, Closure) method to RepositoryHandler via extraProperties")
       val closure = object : Closure<Any>(repositories, repositories) {
+
         @Suppress("unused")
-        fun doCall(repoUrl: String, profile: String = "default", closure: Closure<*>? = null) {
-          logger.info("Getting token for $repoUrl in profile $profile")
-          val token = serviceProvider.get().getToken(repoUrl, profile)
+        fun doCall(repoUrl: String) = register(repoUrl, null, null, null)
+
+        @Suppress("unused")
+        fun doCall(repoUrl: String, profile: String) = register(repoUrl, null, profile, null)
+
+        @Suppress("unused")
+        fun doCall(repoUrl: String, profile: String, closure: Closure<*>?) = register(repoUrl, null, profile, closure)
+
+        @Suppress("unused")
+        fun doCall(repoUrl: String, credentials: CodeArtifactCredentials) = register(repoUrl, credentials, null, null)
+
+        @Suppress("unused")
+        fun doCall(repoUrl: String, credentials: CodeArtifactCredentials, closure: Closure<*>?) =
+          register(repoUrl, credentials, null, closure)
+
+        @Suppress("unused")
+        fun doCall(repoUrl: String, credentials: Map<*, *>) = doCall(repoUrl, CodeArtifactCredentials.of(credentials))
+
+        @Suppress("unused")
+        fun doCall(repoUrl: String, credentials: Map<*, *>, closure: Closure<*>?) =
+          doCall(repoUrl, CodeArtifactCredentials.of(credentials), closure)
+
+        private fun register(
+          repoUrl: String,
+          credentials: CodeArtifactCredentials?,
+          profile: String?,
+          closure: Closure<*>?
+        ) {
+          val token = CodeArtifactAuthenticator.getToken(
+            serviceProvider.get(), logger, repoUrl, credentials, profile, DEFAULT_PROFILE
+          )
           val handler = delegate as RepositoryHandler
           handler.maven { mavenRepo ->
             mavenRepo.url = URI(repoUrl)
@@ -66,16 +96,6 @@ internal object CodeartifactRepositoryConfigurer {
             }
           }
         }
-
-        @Suppress("unused")
-        fun doCall(repoUrl: String) {
-          doCall(repoUrl, "default", null)
-        }
-
-        @Suppress("unused")
-        fun doCall(repoUrl: String, profile: String) {
-          doCall(repoUrl, profile, null)
-        }
       }
       ext["codeartifact"] = closure
     }
@@ -89,10 +109,13 @@ internal object CodeartifactRepositoryConfigurer {
     repositories.withType(MavenArtifactRepository::class.java).configureEach { artifactRepository ->
       val repoUri = artifactRepository.url
       if (isCodeArtifactUri(repoUri) && areCredentialsEmpty(artifactRepository)) {
-        val profile = getProfileFromUri(repoUri, getDefaultProfile())
-        logger.info("Getting token for {} in profile {}", repoUri, profile)
-
-        val token = serviceProvider.get().getToken(repoUri, profile)
+        val token = CodeArtifactAuthenticator.getToken(
+          serviceProvider.get(),
+          logger,
+          repoUri.toString(),
+          profile = getProfileFromUri(repoUri),
+          fallbackProfile = getDefaultProfile()
+        )
         artifactRepository.credentials { creds ->
           creds.username = "aws"
           creds.password = token
@@ -118,7 +141,7 @@ internal object CodeartifactRepositoryConfigurer {
     return uri.toString().matches("(?i).+\\.codeartifact\\..+\\.amazonaws\\..+".toRegex())
   }
 
-  private fun getProfileFromUri(uri: URI, defaultValue: String?): String? {
-    return URIBuilder.of(uri).getQueryParamValue("profile") ?: defaultValue
+  private fun getProfileFromUri(uri: URI): String? {
+    return URIBuilder.of(uri).getQueryParamValue("profile")
   }
 }
