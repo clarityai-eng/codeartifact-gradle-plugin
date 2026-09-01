@@ -39,18 +39,27 @@ dependencies {
   testRuntimeOnly(libs.junit.platform.launcher)
 }
 
+// Shown on the Gradle Plugin Portal. The portal keeps the description it recorded at the first
+// publication, so a change here does not reach the published page on its own: it also needs a
+// request at https://github.com/gradle/plugin-portal-requests
+val pluginDescription = "Easily use private AWS CodeArtifact repositories from Gradle - for dependencies, plugins and " +
+  "publishing. Just apply the plugin: it detects the CodeArtifact repositories declared in your build, including " +
+  "those in pluginManagement and dependencyResolutionManagement, and injects the authorization token for you, with " +
+  "no extra configuration. Authenticates through an AWS profile, the static access keys of a service account, SSO, " +
+  "or the default AWS credential chain."
+
 gradlePlugin {
   // Define the plugin
   website = "https://github.com/clarityai-eng/codeartifact-gradle-plugin"
   vcsUrl = "https://github.com/clarityai-eng/codeartifact-gradle-plugin"
-  description = "Gradle plugin to login easily to AWS CodeArtifact"
+  description = pluginDescription
   plugins {
     register("clarityCodeartifact") {
       id = "ai.clarity.codeartifact"
       implementationClass = "ai.clarity.codeartifact.ClarityCodeArtifactGradlePlugin"
       displayName = "Clarity CodeArtifact Plugin"
-      description = "Gradle plugin to login easily to AWS CodeArtifact"
-      tags = listOf("aws", "codeartifact")
+      description = pluginDescription
+      tags = listOf("aws", "codeartifact", "maven", "authentication", "credentials", "publishing")
     }
   }
 }
