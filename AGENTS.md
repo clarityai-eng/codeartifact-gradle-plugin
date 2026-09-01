@@ -34,13 +34,13 @@ All verified on this checkout (`main`, 2026-09-01).
 
 ```bash
 ./gradlew build            # compile + unit tests + functionalTest + validatePlugins
-./gradlew test             # 44 unit tests
-./gradlew functionalTest   # 71 TestKit tests across Gradle 8.4, 8.7, 8.14, 9.1.0, 9.4.0
+./gradlew test             # 86 unit tests
+./gradlew functionalTest   # 85 TestKit tests across Gradle 8.4, 8.7, 8.14, 9.1.0, 9.4.0
 ./gradlew publishToMavenLocal   # for trying the plugin from a scratch project
 ./gradlew tasks --all
 ```
 
-`./gradlew build` from clean: ~1m30s (`functionalTest` dominates — it boots five Gradle
+`./gradlew build` from clean: ~4m (`functionalTest` dominates — it boots five Gradle
 distributions). Tests are heavily `UP-TO-DATE`-cached; add `--rerun-tasks` when you need proof
 they actually ran.
 
@@ -63,8 +63,11 @@ src/main/kotlin/ai/clarity/codeartifact/
   CodeArtifactProjectPlugin.kt         # Project target: repositories + publishing repositories
   CodeArtifactSettingsPlugin.kt        # Settings target: pluginManagement + DRM repositories
   CodeartifactRepositoryConfigurer.kt  # shared logic: detect, resolve profile, inject creds
+  CodeArtifactAuthenticator.kt         # picks credentials vs profile for one repository
+  CodeArtifactCredentialsResolver.kt   # build-wide service credentials from sysprops/env
 src/main/java/ai/clarity/codeartifact/
-  CodeArtifactToken.java               # Gradle BuildService, caches tokens by "profile@url"
+  CodeArtifactToken.java               # Gradle BuildService, caches tokens per auth+url
+  CodeArtifactCredentials.java         # static service-account keys: masking, redaction, cache key
   TokenFactory.java                    # AWS SDK GetAuthorizationToken call
   CodeArtifactUrl.java                 # host parsing -> domain / owner / region
   URIBuilder.java                      # immutable-ish URI query-param editing
@@ -98,11 +101,23 @@ experiments):
 1. Non-CodeArtifact repositories are left completely untouched (credentials stay `null`).
 2. A CodeArtifact repository that **already has credentials** is skipped.
 3. `?profile=<name>` is read from the URL and then **stripped** from the final repository URL.
-4. Profile precedence: `?profile=` → `-Dcodeartifact.profile` / `systemProp.codeartifact.profile`
-   → `CODEARTIFACT_PROFILE` → *null* (AWS default chain, which honours `AWS_PROFILE`).
-5. Tokens are fetched **once per `profile@url`** and shared through a Gradle `BuildService`.
+4. Credentials precedence, closest-to-the-repository first: credentials passed to
+   `codeartifact()` → `?profile=` or a profile passed to `codeartifact()` →
+   `codeartifact.accessKeyId`/`secretAccessKey` (system property, then `CODEARTIFACT_*` env) →
+   `-Dcodeartifact.profile` / `systemProp.codeartifact.profile` → `CODEARTIFACT_PROFILE` →
+   *null* (AWS default chain, which honours `AWS_PROFILE`). The last two steps apply to
+   automatically detected repositories only; the `codeartifact()` helper falls back to the
+   `default` profile instead.
+5. Tokens are fetched **once per authentication + url** and shared through a Gradle
+   `BuildService`. Profile entries and service-credential entries never share a cache slot, and
+   the credentials half of the key is a SHA-256 digest so no secret is held in clear.
 6. A URL that looks like CodeArtifact but cannot be parsed **fails the build** with
    `Not a valid CodeArtifact repository URL: … (expected format: …)`.
+7. **No secret ever reaches the build log.** Only a masked access key id
+   (`AKIA************MPLE`) is logged, `CodeArtifactCredentials.toString()` is redacted, and a
+   half-configured credential pair fails with `Incomplete CodeArtifact service credentials`
+   rather than falling back silently. Verified at `--debug --stacktrace`: 0 occurrences of the
+   secret in 6249 log lines.
 
 ## Known gaps — do not document these as working
 
@@ -111,20 +126,18 @@ experiments):
   `maven { url = ".../codeartifact.<region>.on.aws/..." }` silently gets no credentials. The
   explicit `codeartifact(...)` helper *does* work with dualstack URLs.
 - **VPC endpoints are unsupported by design** (domain/owner live in the path, not the host).
-- **`codeartifact(url)` hardcodes the profile `"default"`** — it ignores
-  `codeartifact.profile`, `CODEARTIFACT_PROFILE` and `AWS_PROFILE`. Pass the profile explicitly.
-- **The Kotlin DSL helper needs `import ai.clarity.codeartifact.codeartifact`.** The README's
-  Kotlin examples omit it and therefore do not compile.
+- **`codeartifact(url)` with no profile falls back to the `default` profile** — it honours the
+  build-wide service credentials, but still ignores `codeartifact.profile`,
+  `CODEARTIFACT_PROFILE` and `AWS_PROFILE`, unlike automatic detection. Pass the profile
+  explicitly. Known inconsistency, deliberately left alone so far.
+- **The Kotlin DSL needs explicit imports**: `ai.clarity.codeartifact.codeartifact` for the
+  helper and `ai.clarity.codeartifact.CodeArtifactCredentials` for the credentials class.
+- **The `codeartifact()` helper does not work inside `pluginManagement`** (that block runs
+  before `plugins { }` applies the plugin). It does work inside
+  `dependencyResolutionManagement`, in both DSLs.
 - **No linter or formatter** is wired into the build; `./gradlew check` will not catch style.
 
 ## README caveats
 
-`README.md` is mostly accurate but has three defects — fix them only if asked:
-
-1. All examples pin `version "0.1.1"`; the latest published version is **0.1.2**
-   (working version here is `0.1.3-SNAPSHOT`).
-2. It claims the `codeartifact` helper is "**NOT available** in `settings.gradle(.kts)`".
-   Verified false: it works inside `dependencyResolutionManagement` in both DSLs. It genuinely
-   does *not* work inside `pluginManagement`, because that block is evaluated before `plugins {}`
-   applies the plugin.
-3. The Kotlin `codeartifact(...)` snippets are missing the required import.
+One defect left — fix it only if asked: all examples pin `version "0.1.1"`, while the latest
+published version is **0.1.2** (the working version here is `0.1.3-SNAPSHOT`).

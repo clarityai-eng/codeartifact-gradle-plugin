@@ -121,7 +121,10 @@ class CodeArtifactCredentialsTest {
         )
       }
         .isInstanceOf(IllegalArgumentException::class.java)
-        .hasMessageContaining("profile")
+        .hasMessage(
+          "Unsupported CodeArtifact credentials [profile], " +
+            "expected any of [accessKeyId, secretAccessKey, sessionToken]"
+        )
     }
 
     @Test
