@@ -34,8 +34,8 @@ All verified on this checkout (`main`, 2026-09-01).
 
 ```bash
 ./gradlew build            # compile + unit tests + functionalTest + validatePlugins
-./gradlew test             # 86 unit tests
-./gradlew functionalTest   # 85 TestKit tests across Gradle 8.4, 8.7, 8.14, 9.1.0, 9.4.0
+./gradlew test             # 102 unit tests
+./gradlew functionalTest   # 106 TestKit tests across Gradle 8.4, 8.7, 8.14, 9.1.0, 9.4.0
 ./gradlew publishToMavenLocal   # for trying the plugin from a scratch project
 ./gradlew tasks --all
 ```
@@ -64,7 +64,9 @@ src/main/kotlin/ai/clarity/codeartifact/
   CodeArtifactSettingsPlugin.kt        # Settings target: pluginManagement + DRM repositories
   CodeartifactRepositoryConfigurer.kt  # shared logic: detect, resolve profile, inject creds
   CodeArtifactAuthenticator.kt         # picks credentials vs profile for one repository
-  CodeArtifactCredentialsResolver.kt   # build-wide service credentials from sysprops/env
+  CodeArtifactCredentialsResolver.kt   # build-wide service credentials, read via SettingLookup
+  SettingLookup.kt                     # one codeartifact.* setting from Gradle property /
+                                       #   system property / env, plus the shadowing warning
 src/main/java/ai/clarity/codeartifact/
   CodeArtifactToken.java               # Gradle BuildService, caches tokens per auth+url
   CodeArtifactCredentials.java         # static service-account keys: masking, redaction, cache key
@@ -103,11 +105,16 @@ experiments):
 3. `?profile=<name>` is read from the URL and then **stripped** from the final repository URL.
 4. Credentials precedence, closest-to-the-repository first: credentials passed to
    `codeartifact()` → `?profile=` or a profile passed to `codeartifact()` →
-   `codeartifact.accessKeyId`/`secretAccessKey` (system property, then `CODEARTIFACT_*` env) →
-   `-Dcodeartifact.profile` / `systemProp.codeartifact.profile` → `CODEARTIFACT_PROFILE` →
-   *null* (AWS default chain, which honours `AWS_PROFILE`). The last two steps apply to
+   `codeartifact.accessKeyId`/`secretAccessKey` → `codeartifact.profile` → *null* (AWS default
+   chain, which honours `AWS_PROFILE`). The `codeartifact.profile` step applies to
    automatically detected repositories only; the `codeartifact()` helper falls back to the
    `default` profile instead.
+   Every `codeartifact.*` setting is read by `SettingLookup` from three sources in order:
+   Gradle property (plain `gradle.properties` entry or `-P`) → system property (`systemProp.`
+   or `-D`) → `CODEARTIFACT_*` environment variable. The first source that holds the setting
+   wins even when blank, and a blank value resolves to `null`. A Gradle property shadowing a
+   differently-valued system property — or, when no system property is set, a differently-valued
+   environment variable — logs a warning, once per setting.
 5. Tokens are fetched **once per authentication + url** and shared through a Gradle
    `BuildService`. Profile entries and service-credential entries never share a cache slot, and
    the credentials half of the key is a SHA-256 digest so no secret is held in clear.

@@ -183,27 +183,44 @@ build-wide:
 |---|---|---|
 | 1 | `CodeArtifactCredentials` passed to `codeartifact()` (Kotlin) or a credentials map (Groovy) | wins over everything |
 | 2 | `?profile=<name>` in the URL, or a profile passed to `codeartifact()` | beats every build-wide setting; the query param is stripped from the final URL |
-| 3 | `codeartifact.accessKeyId` + `codeartifact.secretAccessKey` (`systemProp.`/`-D`), else `CODEARTIFACT_ACCESS_KEY_ID` + `CODEARTIFACT_SECRET_ACCESS_KEY` | static service-account keys; optional `codeartifact.sessionToken` / `CODEARTIFACT_SESSION_TOKEN` for temporary ones |
-| 4 | `-Dcodeartifact.profile=<name>` / `systemProp.codeartifact.profile=<name>` | command line overrides the properties file |
-| 5 | `CODEARTIFACT_PROFILE` env var | used when 1-4 are absent |
-| 6 | nothing → profile is `null` | the AWS SDK default chain runs, so `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, SSO caches and instance roles apply |
+| 3 | `codeartifact.accessKeyId` + `codeartifact.secretAccessKey` | static service-account keys; optional `codeartifact.sessionToken` for temporary ones |
+| 4 | `codeartifact.profile` | the build-wide default profile |
+| 5 | nothing → profile is `null` | the AWS SDK default chain runs, so `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, SSO caches and instance roles apply |
+
+Each `codeartifact.*` setting in steps 3 and 4 is resolved by `SettingLookup` from three sources,
+highest precedence first:
+
+| # | Source | Written as |
+|---|---|---|
+| 1 | Gradle property | a plain `codeartifact.profile=<name>` in `gradle.properties`, or `-Pcodeartifact.profile=<name>` |
+| 2 | Java system property | `systemProp.codeartifact.profile=<name>` in `gradle.properties`, or `-Dcodeartifact.profile=<name>` |
+| 3 | environment variable | `CODEARTIFACT_PROFILE`, `CODEARTIFACT_ACCESS_KEY_ID`, `CODEARTIFACT_SECRET_ACCESS_KEY`, `CODEARTIFACT_SESSION_TOKEN` |
+
+The first source that *holds* the setting wins, even when the value is blank; a blank value then
+resolves to "not configured" rather than falling through. Verified on Gradle 8.4 through 9.7.1,
+in `Settings` scripts as well as project ones.
 
 Two asymmetries worth knowing, both measured:
 
-- **Steps 4 and 5 apply to automatic detection only.** A repository declared with
+- **Step 4 applies to automatic detection only.** A repository declared with
   `codeartifact()` and no explicit profile falls back to the `default` profile instead, so
-  `codeartifact.profile` and `CODEARTIFACT_PROFILE` have no effect on it. Step 3 *does* reach it.
+  `codeartifact.profile` has no effect on it. Step 3 *does* reach it.
 - **Setting exactly one of the two required step-3 values fails the build** with
   `Incomplete CodeArtifact service credentials: …`, naming the missing half — but only when
   steps 1 and 2 did not already settle the authentication. With a `?profile=` in the URL the
   half-configured pair is ignored instead of reported.
 
-`codeartifact.profile` must carry the `systemProp.` prefix in `gradle.properties`; a plain
-`codeartifact.profile=dev` becomes a Gradle project property, which the plugin never reads. The
-same applies to `codeartifact.accessKeyId` and `codeartifact.secretAccessKey`.
+**Match the command-line override to the form you committed.** A Gradle property is overridden
+with `-P`, a `systemProp.` one with `-D`. Because the Gradle property outranks the system
+property, a `-Dcodeartifact.profile=ci` against a committed plain `codeartifact.profile=dev` does
+*not* override it. The same goes for the environment variable when no system property is set: a
+`CODEARTIFACT_PROFILE` export loses to a plain `codeartifact.profile` entry. Both combinations log
+a warning naming the setting rather than silently authenticating with the wrong profile — the
+values are deliberately left out of the message so a shadowed `codeartifact.secretAccessKey` (or
+`CODEARTIFACT_SECRET_ACCESS_KEY`) cannot leak.
 
-Recommended pattern for teams: commit `systemProp.codeartifact.profile=dev` and let CI override
-with `-Dcodeartifact.profile=ci`. Do not mix it with `?profile=`, which would defeat the override.
+Recommended pattern for teams: commit `codeartifact.profile=dev` and let CI override with
+`-Pcodeartifact.profile=ci`. Do not mix it with `?profile=`, which would defeat the override.
 CI that has no `~/.aws/credentials` at all should export the `CODEARTIFACT_*` keys instead.
 
 ### Secret handling
@@ -222,8 +239,8 @@ reaches build scans, caches and logs. What the plugin does guarantee, all verifi
 ## 6. Testing
 
 ```bash
-./gradlew test --rerun-tasks            # 86 tests, all green
-./gradlew functionalTest --rerun-tasks  # 85 tests, all green
+./gradlew test --rerun-tasks            # 102 tests, all green
+./gradlew functionalTest --rerun-tasks  # 106 tests, all green
 ./gradlew build                         # both + validatePlugins; ~4m from clean
 ```
 
@@ -291,8 +308,11 @@ Never run `release` or `publishPlugins` from an agent session — both are outwa
 | `Not a valid CodeArtifact repository URL: …` | Host does not match `{domain}-{owner}.d.codeartifact.{region}.…` — e.g. a missing `-{owner}`, or a VPC endpoint. Fails the build by design. |
 | `Unresolved reference 'codeartifact'` | Missing `import ai.clarity.codeartifact.codeartifact` in a `.kts` file (`CodeArtifactCredentials` needs its own import). |
 | `Could not find method codeartifact()` inside `pluginManagement` | The block runs before the plugin is applied. Use `maven { url = … }` there. |
-| Wrong profile used by `codeartifact(url)` | With no profile it falls back to `"default"`; `codeartifact.profile` and `CODEARTIFACT_PROFILE` are ignored on that path, though build-wide service credentials are honoured. |
-| `Incomplete CodeArtifact service credentials: …` | Exactly one of `codeartifact.accessKeyId` / `codeartifact.secretAccessKey` (or their `CODEARTIFACT_*` env equivalents) is set. Set both, or unset both. |
+| Wrong profile used by `codeartifact(url)` | With no profile it falls back to `"default"`; `codeartifact.profile` is ignored on that path, though build-wide service credentials are honoured. |
+| `Incomplete CodeArtifact service credentials: …` | Exactly one of `codeartifact.accessKeyId` / `codeartifact.secretAccessKey` is set, in any of the three sources. Set both, or unset both. |
+| `The codeartifact.X Gradle property takes precedence over the codeartifact.X system property` | A plain `gradle.properties` entry is shadowing a `-D` / `systemProp.` value. Override with `-P` instead, or drop the plain entry. |
+| `The codeartifact.X Gradle property takes precedence over the CODEARTIFACT_X environment variable` | A plain `gradle.properties` entry is shadowing an exported environment variable. Override with `-P` instead, or drop the plain entry. |
+| A `-D` override or a `CODEARTIFACT_*` export stopped working after upgrading the plugin | Same cause as the rows above: the plain Gradle property form is now read, and it outranks both. |
 | `Timeout waiting to lock journal cache` | Gradle running inside the Claude Code sandbox. Disable the sandbox. |
 | Credentials not injected on a CodeArtifact URL | The repository already had a username or password; the plugin skips those. |
 

@@ -24,12 +24,38 @@ import org.junit.jupiter.api.Test
 
 class CodeArtifactCredentialsResolverTest {
 
-  private fun resolve(systemProperties: Map<String, String> = emptyMap(), environment: Map<String, String> = emptyMap()) =
-    CodeArtifactCredentialsResolver.resolve(systemProperties::get, environment::get)
+  private fun resolve(
+    gradleProperties: Map<String, String> = emptyMap(),
+    systemProperties: Map<String, String> = emptyMap(),
+    environment: Map<String, String> = emptyMap()
+  ) = CodeArtifactCredentialsResolver.resolve(
+    // Mirrors the precedence of SettingLookup.of: the first source that holds the setting wins, blank resolves to null
+    SettingLookup { property, environmentVariable ->
+      (gradleProperties[property] ?: systemProperties[property] ?: environment[environmentVariable])
+        ?.takeIf { it.isNotBlank() }
+    }
+  )
 
   @Test
   fun `no credentials are resolved when nothing is configured`() {
     assertThat(resolve()).isNull()
+  }
+
+  @Test
+  fun `credentials are resolved from the gradle properties`() {
+    // When
+    val credentials = resolve(
+      gradleProperties = mapOf(
+        "codeartifact.accessKeyId" to "gradle-property-key-id",
+        "codeartifact.secretAccessKey" to "gradle-property-secret",
+        "codeartifact.sessionToken" to "gradle-property-session-token"
+      )
+    )
+
+    // Then
+    assertThat(credentials).isEqualTo(
+      CodeArtifactCredentials.of("gradle-property-key-id", "gradle-property-secret", "gradle-property-session-token")
+    )
   }
 
   @Test
@@ -59,6 +85,22 @@ class CodeArtifactCredentialsResolverTest {
 
     // Then
     assertThat(credentials).isEqualTo(CodeArtifactCredentials.of("env-key-id", "env-secret", "env-session-token"))
+  }
+
+  @Test
+  fun `each gradle property takes precedence over its system property and environment variable`() {
+    // When
+    val credentials = resolve(
+      gradleProperties = mapOf("codeartifact.accessKeyId" to "gradle-property-key-id"),
+      systemProperties = mapOf("codeartifact.accessKeyId" to "sysprop-key-id"),
+      environment = mapOf(
+        "CODEARTIFACT_ACCESS_KEY_ID" to "env-key-id",
+        "CODEARTIFACT_SECRET_ACCESS_KEY" to "env-secret"
+      )
+    )
+
+    // Then
+    assertThat(credentials).isEqualTo(CodeArtifactCredentials.of("gradle-property-key-id", "env-secret"))
   }
 
   @Test
@@ -98,10 +140,18 @@ class CodeArtifactCredentialsResolverTest {
   }
 
   @Test
+  fun `blank gradle properties are ignored`() {
+    assertThat(
+      resolve(gradleProperties = mapOf("codeartifact.accessKeyId" to "  ", "codeartifact.secretAccessKey" to "  "))
+    ).isNull()
+  }
+
+  @Test
   fun `a secret access key without an access key id is rejected`() {
     assertThatThrownBy { resolve(systemProperties = mapOf("codeartifact.secretAccessKey" to "secret")) }
       .isInstanceOf(InvalidUserDataException::class.java)
-      .hasMessageContaining("codeartifact.accessKeyId")
+      .hasMessageContaining("codeartifact.accessKeyId Gradle property")
+      .hasMessageContaining("codeartifact.accessKeyId system property")
       .hasMessageContaining("CODEARTIFACT_ACCESS_KEY_ID")
   }
 
@@ -109,7 +159,8 @@ class CodeArtifactCredentialsResolverTest {
   fun `an access key id without a secret access key is rejected`() {
     assertThatThrownBy { resolve(environment = mapOf("CODEARTIFACT_ACCESS_KEY_ID" to "key-id")) }
       .isInstanceOf(InvalidUserDataException::class.java)
-      .hasMessageContaining("codeartifact.secretAccessKey")
+      .hasMessageContaining("codeartifact.secretAccessKey Gradle property")
+      .hasMessageContaining("codeartifact.secretAccessKey system property")
       .hasMessageContaining("CODEARTIFACT_SECRET_ACCESS_KEY")
   }
 }

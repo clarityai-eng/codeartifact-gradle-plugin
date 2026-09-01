@@ -531,6 +531,75 @@ class ClarityCodeartifactPluginFunctionalTest {
 
     @ParameterizedTest(name = "Gradle {0}")
     @MethodSource("ai.clarity.codeartifact.ClarityCodeartifactPluginFunctionalTest#gradleVersions")
+    fun `profile default from a plain gradle property is used`(gradleVersion: String) {
+      // Given: the default profile written without the systemProp. prefix, the way a Gradle plugin is usually configured
+      gradlePropertiesFile.writeText("codeartifact.profile=dev")
+
+      // When: running the build (expecting a failure due to missing AWS credentials)
+      val result = createRunner(gradleVersion)
+        .withArguments("help", "--info")
+        .buildAndFail()
+
+      // Then: the token fetch uses the project default profile
+      assertThat(result.output).containsIgnoringCase("Getting token for $codeArtifactUrl in profile dev")
+    }
+
+    @ParameterizedTest(name = "Gradle {0}")
+    @MethodSource("ai.clarity.codeartifact.ClarityCodeartifactPluginFunctionalTest#gradleVersions")
+    fun `command line project property overrides the plain gradle properties default`(gradleVersion: String) {
+      // Given: a project-wide default profile written plainly
+      gradlePropertiesFile.writeText("codeartifact.profile=dev")
+
+      // When: running the build with -P, as a CI pipeline would
+      val result = createRunner(gradleVersion)
+        .withArguments("help", "--info", "-Pcodeartifact.profile=ci")
+        .buildAndFail()
+
+      // Then: the command line wins over the gradle.properties default
+      assertThat(result.output).containsIgnoringCase("Getting token for $codeArtifactUrl in profile ci")
+    }
+
+    @ParameterizedTest(name = "Gradle {0}")
+    @MethodSource("ai.clarity.codeartifact.ClarityCodeartifactPluginFunctionalTest#gradleVersions")
+    fun `a plain gradle property shadows the system property and says so`(gradleVersion: String) {
+      // Given: the same setting configured both ways, which is how a half-finished migration to the plain form looks
+      gradlePropertiesFile.writeText("codeartifact.profile=dev")
+
+      // When: the command line tries to override it with -D, which no longer reaches the plugin
+      val result = createRunner(gradleVersion)
+        .withArguments("help", "--info", "-Dcodeartifact.profile=ci")
+        .buildAndFail()
+
+      // Then: the Gradle property wins, and the build warns that the -D override is being ignored
+      assertThat(result.output).containsIgnoringCase("Getting token for $codeArtifactUrl in profile dev")
+      assertThat(result.output).contains(
+        "The codeartifact.profile Gradle property takes precedence over the codeartifact.profile system property"
+      )
+      assertThat(result.output).contains("Override the Gradle property with -Pcodeartifact.profile")
+    }
+
+    @ParameterizedTest(name = "Gradle {0}")
+    @MethodSource("ai.clarity.codeartifact.ClarityCodeartifactPluginFunctionalTest#gradleVersions")
+    fun `a plain gradle property shadows the environment variable and says so`(gradleVersion: String) {
+      // Given: a plain default in gradle.properties and a CODEARTIFACT_PROFILE that used to win before the plain form was read
+      gradlePropertiesFile.writeText("codeartifact.profile=dev")
+
+      // When: running the build with the environment variable pointing elsewhere
+      val result = createRunner(gradleVersion)
+        .withEnvironment(System.getenv() + ("CODEARTIFACT_PROFILE" to "ci"))
+        .withArguments("help", "--info")
+        .buildAndFail()
+
+      // Then: the Gradle property wins, and the build warns that the environment variable is being ignored
+      assertThat(result.output).containsIgnoringCase("Getting token for $codeArtifactUrl in profile dev")
+      assertThat(result.output).contains(
+        "The codeartifact.profile Gradle property takes precedence over the CODEARTIFACT_PROFILE environment variable"
+      )
+      assertThat(result.output).contains("Override the Gradle property with -Pcodeartifact.profile")
+    }
+
+    @ParameterizedTest(name = "Gradle {0}")
+    @MethodSource("ai.clarity.codeartifact.ClarityCodeartifactPluginFunctionalTest#gradleVersions")
     fun `command line system property overrides the gradle properties default`(gradleVersion: String) {
       // Given: a project-wide default profile and a CI-style command line override
       gradlePropertiesFile.writeText("systemProp.codeartifact.profile=dev")
@@ -708,6 +777,31 @@ class ClarityCodeartifactPluginFunctionalTest {
     }
 
     @Test
+    fun `service credentials from plain gradle properties are used to fetch the token`() {
+      // Given: the service account credentials declared without the systemProp. prefix
+      buildFile.writeText(printRepoCredentialsBuild(codeArtifactUrl))
+      gradlePropertiesFile.writeText(
+        """
+        codeartifact.accessKeyId=$serviceUserAccessKeyId
+        codeartifact.secretAccessKey=service-user-secret
+        """.trimIndent()
+      )
+
+      // When: running the build with no AWS credentials in the environment
+      val result = runnerWithoutAwsCredentials()
+        .withEnvironment(
+          environmentWithoutAwsCredentials("AWS_ENDPOINT_URL_CODEARTIFACT" to "http://127.0.0.1:${server.address.port}")
+        )
+        .withArguments("printRepoCredentials", "--info")
+        .build()
+
+      // Then: the repository ends up configured with the token issued for the service account
+      assertThat(result.output).contains("with the service credentials $maskedServiceUserAccessKeyId")
+      assertThat(result.output).doesNotContain("service-user-secret")
+      assertThat(result.output).contains("password=stub-token")
+    }
+
+    @Test
     fun `a repository profile keeps precedence over the service credentials of the build`() {
       // Given: service credentials for the whole build and an explicit profile on the repository
       buildFile.writeText(printRepoCredentialsBuild("$codeArtifactUrl?profile=url-profile"))
@@ -742,9 +836,10 @@ class ClarityCodeartifactPluginFunctionalTest {
         .withArguments("printRepoCredentials")
         .buildAndFail()
 
-      // Then: the build explains which half is missing
+      // Then: the build explains which half is missing, naming every source it could be set in
       assertThat(result.output).contains("Incomplete CodeArtifact service credentials")
-      assertThat(result.output).contains("codeartifact.secretAccessKey")
+      assertThat(result.output).contains("codeartifact.secretAccessKey Gradle property")
+      assertThat(result.output).contains("codeartifact.secretAccessKey system property")
       assertThat(result.output).contains("CODEARTIFACT_SECRET_ACCESS_KEY")
     }
 

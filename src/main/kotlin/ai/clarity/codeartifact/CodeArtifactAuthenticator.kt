@@ -32,18 +32,20 @@ internal object CodeArtifactAuthenticator {
    *
    *  1. [credentials] declared on the repository itself
    *  2. [profile] declared on the repository itself
-   *  3. the service account credentials shared by the build ([CodeArtifactCredentialsResolver])
+   *  3. the service account credentials shared by the build, read from [settings] by
+   *     [CodeArtifactCredentialsResolver]
    *  4. [fallbackProfile], which may be `null` to let the AWS SDK resolve the credentials on its own
    */
   fun getToken(
     tokenService: CodeArtifactToken,
     logger: Logger,
+    settings: SettingLookup,
     repoUrl: String,
     credentials: CodeArtifactCredentials? = null,
     profile: String? = null,
     fallbackProfile: String? = null
   ): String {
-    val serviceCredentials = credentials ?: if (profile == null) CodeArtifactCredentialsResolver.resolve() else null
+    val serviceCredentials = credentials ?: if (profile == null) CodeArtifactCredentialsResolver.resolve(settings) else null
     if (serviceCredentials != null) {
       logger.info("Getting token for {} with the service credentials {}", repoUrl, serviceCredentials.maskedAccessKeyId)
       return tokenService.getToken(repoUrl, serviceCredentials)

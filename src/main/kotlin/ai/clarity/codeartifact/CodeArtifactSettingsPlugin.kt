@@ -30,8 +30,11 @@ internal class CodeArtifactSettingsPlugin : Plugin<Settings> {
     ) {}
 
     val logger = Logging.getLogger(Settings::class.java)
+    val lookup = SettingLookup.of(settings.providers, logger)
 
-    CodeartifactRepositoryConfigurer.configure(settings.pluginManagement.repositories, logger, serviceProvider)
-    CodeartifactRepositoryConfigurer.configure(settings.dependencyResolutionManagement.repositories, logger, serviceProvider)
+    CodeartifactRepositoryConfigurer.configure(settings.pluginManagement.repositories, logger, serviceProvider, lookup)
+    CodeartifactRepositoryConfigurer.configure(
+      settings.dependencyResolutionManagement.repositories, logger, serviceProvider, lookup
+    )
   }
 }
