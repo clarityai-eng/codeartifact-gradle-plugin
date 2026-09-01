@@ -272,22 +272,26 @@ the [standard environment variables](https://docs.aws.amazon.com/sdk-for-java/v1
 If you need a different profile for CodeArtifact than for the rest of your AWS calls you can use this environment
 variable.
 
-### 4 – Define the profile using a system property
+### 4 – Define the profile using a Gradle property
 
 If you need a different profile for CodeArtifact and you cannot define an environment variable, you
-can define it via a system property.
+can define it as a Gradle property.
 
 Using the `gradle.properties` file:
 
 ```properties
-systemProp.codeartifact.profile=<your profile>
+codeartifact.profile=<your profile>
 ```
 
 Or using the command line:
 
 ```bash
-gradle -Dcodeartifact.profile=<your profile> ...
+gradle -Pcodeartifact.profile=<your profile> ...
 ```
+
+The system property form is equally supported, for builds that already use it:
+`systemProp.codeartifact.profile=<your profile>` in `gradle.properties`, or
+`-Dcodeartifact.profile=<your profile>` on the command line.
 
 ### Recommended pattern: project-wide default profile with CI/CD override
 
@@ -297,22 +301,24 @@ override it, commit the default to the project's `gradle.properties` instead of 
 
 ```properties
 # gradle.properties (committed with the project)
-systemProp.codeartifact.profile=dev
+codeartifact.profile=dev
 ```
 
 Local builds then use the `dev` profile out of the box, and CI/CD overrides it from the
 command line:
 
 ```bash
-gradle -Dcodeartifact.profile=ci ...
+gradle -Pcodeartifact.profile=ci ...
 ```
 
 Keep in mind:
 
-- The `systemProp.` prefix is required. A plain `codeartifact.profile=dev` entry defines a
-  Gradle project property, which the plugin does not read.
-- Override with `-D` on the command line. The `CODEARTIFACT_PROFILE` environment variable
-  does not take precedence over a system property defined in `gradle.properties`.
+- **Match the override to the form you committed.** A Gradle property is overridden with `-P`,
+  a `systemProp.` one with `-D`. Since the Gradle property is the one that wins, a `-D` against
+  a committed plain `codeartifact.profile` is ignored — the build warns when that happens
+  rather than authenticating with the wrong profile silently.
+- Neither `CODEARTIFACT_PROFILE` nor any other environment variable takes precedence over a
+  profile defined in `gradle.properties`.
 - A developer can override the project default for their machine in
   `~/.gradle/gradle.properties`, which takes precedence over the project file.
 - Do not combine this pattern with `?profile=` in the repository URL: the query param has
@@ -325,10 +331,10 @@ keys of a service account — an IAM user or a set of temporary credentials — 
 
 ### For the whole build
 
-Configure the access key id and the secret access key. Each value is read from its system property first, and from its
-environment variable second:
+Configure the access key id and the secret access key. Each value is read from its Gradle property first, from the
+system property of the same name second, and from its environment variable last:
 
-| Value             | System property                | Environment variable             | Required                       |
+| Value             | Gradle / system property       | Environment variable             | Required                       |
 |-------------------|--------------------------------|----------------------------------|--------------------------------|
 | Access key id     | `codeartifact.accessKeyId`     | `CODEARTIFACT_ACCESS_KEY_ID`     | Yes                            |
 | Secret access key | `codeartifact.secretAccessKey` | `CODEARTIFACT_SECRET_ACCESS_KEY` | Yes                            |
@@ -344,9 +350,11 @@ export CODEARTIFACT_SECRET_ACCESS_KEY=<your secret access key>
 On a developer machine, declare them in `~/.gradle/gradle.properties`, which lives outside the project:
 
 ```properties
-systemProp.codeartifact.accessKeyId=<your access key id>
-systemProp.codeartifact.secretAccessKey=<your secret access key>
+codeartifact.accessKeyId=<your access key id>
+codeartifact.secretAccessKey=<your secret access key>
 ```
+
+The `systemProp.codeartifact.accessKeyId` form works too, for builds that already use it.
 
 They then apply to every CodeArtifact repository of the build, including the ones declared in `settings.gradle(.kts)`,
 and they take precedence over the `codeartifact.profile` / `CODEARTIFACT_PROFILE` configuration.
@@ -407,15 +415,23 @@ the same level:
 
 1. Credentials passed to the `codeartifact()` helper
 2. Profile passed to the `codeartifact()` helper, or `?profile=` query parameter in the repository URL
-3. `codeartifact.accessKeyId` and `codeartifact.secretAccessKey`, each read from the system property first and from the
-   matching `CODEARTIFACT_*` environment variable second
-4. `codeartifact.profile` Java system property
-5. `CODEARTIFACT_PROFILE` environment variable
-6. The AWS SDK default credentials provider chain (`AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, instance roles, …)
+3. `codeartifact.accessKeyId` and `codeartifact.secretAccessKey`
+4. `codeartifact.profile`
+5. The AWS SDK default credentials provider chain (`AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, instance roles, …)
 
-> **Note:** steps 4 and 5 only apply to the repositories detected automatically. A repository declared with the
+Every `codeartifact.*` setting in steps 3 and 4 is looked up in three places, in this order:
+
+1. the **Gradle property** — written plainly in `gradle.properties`, or passed as `-P`
+2. the **Java system property** — written as `systemProp.` in `gradle.properties`, or passed as `-D`
+3. the **environment variable** — `CODEARTIFACT_PROFILE`, `CODEARTIFACT_ACCESS_KEY_ID`, …
+
+The first place that holds the setting wins, even when the value is blank; a blank value then resolves to "not
+configured" rather than falling through to the next place. When a Gradle property shadows a system property holding a
+different value, the build warns, because that is usually a `-D` override that has stopped working.
+
+> **Note:** step 4 only applies to the repositories detected automatically. A repository declared with the
 > `codeartifact()` helper and no explicit profile falls back to the `default` profile instead, so `codeartifact.profile`
-> and `CODEARTIFACT_PROFILE` have no effect on it. Pass the profile to the helper if you need another one.
+> has no effect on it. Pass the profile to the helper if you need another one.
 
 The incomplete-configuration check on step 3 runs only when steps 1 and 2 did not already settle the authentication:
 with a `?profile=` in the URL, or a profile passed to the helper, a half-configured pair of service credentials is

@@ -29,12 +29,14 @@ internal class CodeArtifactProjectPlugin : Plugin<Project> {
       CodeArtifactToken::class.java
     ) {}
 
-    CodeartifactRepositoryConfigurer.configure(project.repositories, project.logger, serviceProvider)
+    val settings = SettingLookup.of(project.providers, project.logger)
+
+    CodeartifactRepositoryConfigurer.configure(project.repositories, project.logger, serviceProvider, settings)
 
     project.plugins.withId("maven-publish") {
       val publishing = project.extensions.findByType(PublishingExtension::class.java)
       publishing?.repositories?.let {
-        CodeartifactRepositoryConfigurer.configure(it, project.logger, serviceProvider)
+        CodeartifactRepositoryConfigurer.configure(it, project.logger, serviceProvider, settings)
       }
     }
   }

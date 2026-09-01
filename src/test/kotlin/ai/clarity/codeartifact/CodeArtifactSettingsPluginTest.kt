@@ -65,6 +65,8 @@ class CodeArtifactSettingsPluginTest {
     every { settings.pluginManagement } returns pluginManagement
     every { pluginManagement.repositories } returns pluginManagementProject.repositories
     every { settings.dependencyResolutionManagement } returns dependencyResolutionManagement
+    // A real ProviderFactory, so the plugin reads the settings the way a build does
+    every { settings.providers } returns pluginManagementProject.providers
     every { dependencyResolutionManagement.repositories } returns dependencyResolutionProject.repositories
 
     val codeArtifactUrl = "https://my-domain-111122223333.d.codeartifact.us-west-2.amazonaws.com/maven/my-repo/"
@@ -123,6 +125,8 @@ class CodeArtifactSettingsPluginTest {
     every { settings.pluginManagement } returns pluginManagement
     every { pluginManagement.repositories } returns pluginManagementProject.repositories
     every { settings.dependencyResolutionManagement } returns dependencyResolutionManagement
+    // A real ProviderFactory, so the plugin reads the settings the way a build does
+    every { settings.providers } returns pluginManagementProject.providers
     every { dependencyResolutionManagement.repositories } returns dependencyResolutionProject.repositories
 
     val codeArtifactUrl = "https://my-domain-111122223333.d.codeartifact.eu-west-1.amazonaws.com/maven/my-repo/"
@@ -174,6 +178,8 @@ class CodeArtifactSettingsPluginTest {
     every { settings.pluginManagement } returns pluginManagement
     every { pluginManagement.repositories } returns pluginManagementProject.repositories
     every { settings.dependencyResolutionManagement } returns dependencyResolutionManagement
+    // A real ProviderFactory, so the plugin reads the settings the way a build does
+    every { settings.providers } returns pluginManagementProject.providers
     every { dependencyResolutionManagement.repositories } returns dependencyResolutionProject.repositories
 
     val mavenUrl = "https://repo.maven.apache.org/maven2/"
@@ -229,6 +235,8 @@ class CodeArtifactSettingsPluginTest {
     every { settings.pluginManagement } returns pluginManagement
     every { pluginManagement.repositories } returns pluginManagementProject.repositories
     every { settings.dependencyResolutionManagement } returns dependencyResolutionManagement
+    // A real ProviderFactory, so the plugin reads the settings the way a build does
+    every { settings.providers } returns pluginManagementProject.providers
     every { dependencyResolutionManagement.repositories } returns dependencyResolutionProject.repositories
 
     // When
@@ -278,6 +286,8 @@ class CodeArtifactSettingsPluginTest {
     every { settings.pluginManagement } returns pluginManagement
     every { pluginManagement.repositories } returns pluginManagementProject.repositories
     every { settings.dependencyResolutionManagement } returns dependencyResolutionManagement
+    // A real ProviderFactory, so the plugin reads the settings the way a build does
+    every { settings.providers } returns pluginManagementProject.providers
     every { dependencyResolutionManagement.repositories } returns dependencyResolutionProject.repositories
 
     val codeArtifactUrl = "https://my-domain-111122223333.d.codeartifact.us-west-2.amazonaws.com/maven/my-repo/"
@@ -341,6 +351,8 @@ class CodeArtifactSettingsPluginTest {
     every { settings.pluginManagement } returns pluginManagement
     every { pluginManagement.repositories } returns pluginManagementProject.repositories
     every { settings.dependencyResolutionManagement } returns dependencyResolutionManagement
+    // A real ProviderFactory, so the plugin reads the settings the way a build does
+    every { settings.providers } returns pluginManagementProject.providers
     every { dependencyResolutionManagement.repositories } returns dependencyResolutionProject.repositories
 
     val codeArtifactUrl = "https://my-domain-111122223333.d.codeartifact.us-west-2.amazonaws.com/maven/my-repo/"

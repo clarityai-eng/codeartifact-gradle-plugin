@@ -31,20 +31,23 @@ internal object CodeartifactRepositoryConfigurer {
   fun configure(
     repositories: RepositoryHandler,
     logger: Logger,
-    serviceProvider: Provider<CodeArtifactToken>
+    serviceProvider: Provider<CodeArtifactToken>,
+    settings: SettingLookup
   ) {
-    setupCodeArtifactRepositories(repositories, logger, serviceProvider)
-    configRepositories(repositories, logger, serviceProvider)
+    setupCodeArtifactRepositories(repositories, logger, serviceProvider, settings)
+    configRepositories(repositories, logger, serviceProvider, settings)
   }
 
   private fun setupCodeArtifactRepositories(
     repositories: RepositoryHandler,
     logger: Logger,
-    serviceProvider: Provider<CodeArtifactToken>
+    serviceProvider: Provider<CodeArtifactToken>,
+    settings: SettingLookup
   ) {
     val ext = (repositories as ExtensionAware).extensions.extraProperties
-    // Stash the service provider so the Kotlin extension function can access it
+    // Stash the service provider and the setting lookup so the Kotlin extension function can access them
     ext["codeartifactServiceProvider"] = serviceProvider
+    ext["codeartifactSettingLookup"] = settings
 
     if (!ext.has("codeartifact")) {
       logger.debug("Adding the codeartifact(url, profile|credentials, Closure) method to RepositoryHandler via extraProperties")
@@ -80,7 +83,7 @@ internal object CodeartifactRepositoryConfigurer {
           closure: Closure<*>?
         ) {
           val token = CodeArtifactAuthenticator.getToken(
-            serviceProvider.get(), logger, repoUrl, credentials, profile, DEFAULT_PROFILE
+            serviceProvider.get(), logger, settings, repoUrl, credentials, profile, DEFAULT_PROFILE
           )
           val handler = delegate as RepositoryHandler
           handler.maven { mavenRepo ->
@@ -104,7 +107,8 @@ internal object CodeartifactRepositoryConfigurer {
   private fun configRepositories(
     repositories: RepositoryHandler,
     logger: Logger,
-    serviceProvider: Provider<CodeArtifactToken>
+    serviceProvider: Provider<CodeArtifactToken>,
+    settings: SettingLookup
   ) {
     repositories.withType(MavenArtifactRepository::class.java).configureEach { artifactRepository ->
       val repoUri = artifactRepository.url
@@ -112,9 +116,10 @@ internal object CodeartifactRepositoryConfigurer {
         val token = CodeArtifactAuthenticator.getToken(
           serviceProvider.get(),
           logger,
+          settings,
           repoUri.toString(),
           profile = getProfileFromUri(repoUri),
-          fallbackProfile = getDefaultProfile()
+          fallbackProfile = getDefaultProfile(settings)
         )
         artifactRepository.credentials { creds ->
           creds.username = "aws"
@@ -125,8 +130,8 @@ internal object CodeartifactRepositoryConfigurer {
     }
   }
 
-  private fun getDefaultProfile(): String? {
-    return System.getProperty("codeartifact.profile") ?: System.getenv("CODEARTIFACT_PROFILE")
+  private fun getDefaultProfile(settings: SettingLookup): String? {
+    return settings.read("codeartifact.profile", "CODEARTIFACT_PROFILE")
   }
 
   private fun removeProfile(uri: URI): URI {

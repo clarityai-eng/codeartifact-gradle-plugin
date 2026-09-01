@@ -20,8 +20,7 @@ package ai.clarity.codeartifact
 import org.gradle.api.InvalidUserDataException
 
 /**
- * Resolves the service account credentials shared by the whole build, from system properties first and environment
- * variables second.
+ * Resolves the service account credentials shared by the whole build, from the sources a [SettingLookup] covers.
  *
  * They are deliberately not read from the repository URL: a query param would leak the secret access key into build
  * scans, caches and logs.
@@ -33,17 +32,12 @@ internal object CodeArtifactCredentialsResolver {
   private val SESSION_TOKEN = Source("codeartifact.sessionToken", "CODEARTIFACT_SESSION_TOKEN")
 
   /**
-   * Returns the configured credentials, or `null` when none is configured and the profile based authentication has to
-   * be used instead.
-   *
-   * The lookups are parameters so that the tests can exercise the environment variables without mutating the JVM.
+   * Returns the credentials configured through [settings], or `null` when none is configured and the profile based
+   * authentication has to be used instead.
    */
-  fun resolve(
-    systemProperties: (String) -> String? = System::getProperty,
-    environment: (String) -> String? = System::getenv
-  ): CodeArtifactCredentials? {
-    val accessKeyId = ACCESS_KEY_ID.read(systemProperties, environment)
-    val secretAccessKey = SECRET_ACCESS_KEY.read(systemProperties, environment)
+  fun resolve(settings: SettingLookup): CodeArtifactCredentials? {
+    val accessKeyId = ACCESS_KEY_ID.read(settings)
+    val secretAccessKey = SECRET_ACCESS_KEY.read(settings)
 
     if (accessKeyId == null && secretAccessKey == null) {
       return null
@@ -55,18 +49,17 @@ internal object CodeArtifactCredentialsResolver {
       throw incompleteCredentials(SECRET_ACCESS_KEY)
     }
 
-    return CodeArtifactCredentials.of(accessKeyId, secretAccessKey, SESSION_TOKEN.read(systemProperties, environment))
+    return CodeArtifactCredentials.of(accessKeyId, secretAccessKey, SESSION_TOKEN.read(settings))
   }
 
   private fun incompleteCredentials(missing: Source) = InvalidUserDataException(
-    "Incomplete CodeArtifact service credentials: neither the ${missing.systemProperty} system property nor the " +
-      "${missing.environmentVariable} environment variable is set. Configure both the access key id and the secret " +
-      "access key, or unset them to authenticate with an AWS profile."
+    "Incomplete CodeArtifact service credentials: neither the ${missing.property} Gradle property, nor the " +
+      "${missing.property} system property, nor the ${missing.environmentVariable} environment variable is set. " +
+      "Configure both the access key id and the secret access key, or unset them to authenticate with an AWS profile."
   )
 
-  private data class Source(val systemProperty: String, val environmentVariable: String) {
+  private data class Source(val property: String, val environmentVariable: String) {
 
-    fun read(systemProperties: (String) -> String?, environment: (String) -> String?): String? =
-      (systemProperties(systemProperty) ?: environment(environmentVariable))?.takeIf { it.isNotBlank() }
+    fun read(settings: SettingLookup): String? = settings.read(property, environmentVariable)
   }
 }
