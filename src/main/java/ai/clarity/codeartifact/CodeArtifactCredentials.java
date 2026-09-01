@@ -20,6 +20,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -40,7 +41,10 @@ public final class CodeArtifactCredentials {
   private static final String SECRET_ACCESS_KEY = "secretAccessKey";
   private static final String SESSION_TOKEN = "sessionToken";
 
-  private static final Set<String> SUPPORTED_KEYS = Set.of(ACCESS_KEY_ID, SECRET_ACCESS_KEY, SESSION_TOKEN);
+  // LinkedHashSet, not Set.of: the iteration order of Set.of varies between JVM runs and this set is rendered in an
+  // error message
+  private static final Set<String> SUPPORTED_KEYS =
+    new LinkedHashSet<>(List.of(ACCESS_KEY_ID, SECRET_ACCESS_KEY, SESSION_TOKEN));
 
   private final String accessKeyId;
   private final String secretAccessKey;

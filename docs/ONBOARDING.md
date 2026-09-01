@@ -9,7 +9,7 @@ Consumers declare an ordinary Maven repository pointing at an AWS CodeArtifact e
 Gradle **configuration time** the plugin:
 
 1. spots repositories whose URL matches `.+\.codeartifact\..+\.amazonaws\..+` (case-insensitive);
-2. resolves which AWS profile to use;
+2. resolves how to authenticate — the static keys of a service account, or an AWS profile;
 3. calls `codeartifact:GetAuthorizationToken` through the AWS SDK v2;
 4. sets `username = "aws"`, `password = <token>` on the repository;
 5. removes the `?profile=` query parameter from the URL so AWS never sees it.
@@ -23,7 +23,7 @@ There is no task, no extension block, and nothing for the consumer to invoke.
 | JDK to build | 21 (Gradle toolchain; the launcher JVM may be newer — verified on JDK 25) |
 | Gradle to build | wrapper, 9.7.1 |
 | Gradle to consume | 8.4+ documented and tested (8.3 also works in practice, see §7) |
-| AWS | a resolvable credential chain — profile, SSO, env vars, instance role… |
+| AWS | a resolvable credential chain — service-account keys (§5), profile, SSO, env vars, instance role… |
 
 Building this repo itself needs **no AWS access**: it resolves only from Maven Central.
 
@@ -52,12 +52,20 @@ Gradle cannot run inside the Claude Code sandbox — disable it for every `./gra
                                      │    Groovy closure + stashes the    │
                                      │    BuildService in extraProperties │
                                      │  · withType(Maven…).configureEach: │
-                                     │    detect ▸ profile ▸ token ▸ creds│
+                                     │    detect ▸ authenticate ▸ creds   │
+                                     └───────────────┬────────────────────┘
+                                                     │ delegates the choice to
+                                     ┌───────────────▼────────────────────┐
+                                     │ CodeArtifactAuthenticator          │
+                                     │   repo credentials ▸ repo profile  │
+                                     │   ▸ CodeArtifactCredentialsResolver│
+                                     │     (build-wide static keys)       │
+                                     │   ▸ fallback profile               │
                                      └───────────────┬────────────────────┘
                                                      │
                        ┌─────────────────────────────▼──────────────────┐
                        │ CodeArtifactToken  (Gradle BuildService)        │
-                       │   ConcurrentHashMap<"profile@url", token>       │
+                       │   ConcurrentHashMap<auth+url, token>            │
                        └───────────────┬────────────────────────────────┘
                                        │
                     CodeArtifactUrl ───┴──▶ TokenFactory ──▶ AWS CodeArtifact
@@ -73,15 +81,22 @@ Gradle cannot run inside the Claude Code sandbox — disable it for every `./gra
 | `ClarityCodeArtifactGradlePlugin.kt` | `implementationClass` in `build.gradle.kts`; a `Plugin<Any>` that dispatches on target type. Also declares the top-level Kotlin extension `RepositoryHandler.codeartifact(url, profile, action)`. |
 | `CodeArtifactProjectPlugin.kt` | Configures `project.repositories` and, when `maven-publish` is present, `publishing.repositories`. |
 | `CodeArtifactSettingsPlugin.kt` | Configures `settings.pluginManagement.repositories` and `settings.dependencyResolutionManagement.repositories`. |
-| `CodeartifactRepositoryConfigurer.kt` | The only place detection, profile resolution and credential injection live. |
+| `CodeartifactRepositoryConfigurer.kt` | The only place detection and credential injection live. |
+| `CodeArtifactAuthenticator.kt` | The only place the precedence between repository credentials, repository profile, build-wide service credentials and fallback profile is decided. |
+| `CodeArtifactCredentialsResolver.kt` | Reads the build-wide service-account keys from system properties, then environment variables. Takes the lookups as parameters so tests need not mutate the JVM. |
 
 ### Support classes (Java)
 
-- **`CodeArtifactToken`** — `BuildService<None>`, registered as `"codeartifact-token"`, caching
-  by `profile + "@" + url`. One token per profile/URL pair per build, shared across projects.
-- **`TokenFactory`** — builds a `CodeartifactClient` for the URL's region. If `profileName` is
-  non-null it forces `ProfileCredentialsProvider.create(profile)`; if null it leaves the AWS
-  default credential chain in place (which is how `AWS_PROFILE`, SSO and instance roles work).
+- **`CodeArtifactToken`** — `BuildService<None>`, registered as `"codeartifact-token"`, caching by
+  `"profile:<name>@<url>"` or `"credentials:<sha256>@<url>"`. One token per authentication/URL
+  pair per build, shared across projects; the two key shapes cannot collide.
+- **`CodeArtifactCredentials`** — the static service-account keys. Rejects blank values and
+  non-`CharSequence` map entries (naming the key and its type, never its value), exposes only a
+  masked access key id, redacts `toString()`, and derives the cache key from a SHA-256 digest.
+- **`TokenFactory`** — builds a `CodeartifactClient` for the URL's region. With credentials it
+  installs a `StaticCredentialsProvider`; with a non-null profile name a
+  `ProfileCredentialsProvider`; with neither it leaves the AWS default credential chain in place
+  (which is how `AWS_PROFILE`, SSO and instance roles work).
 - **`CodeArtifactUrl`** — parses the host with
   `^([^.]+)-([^-.]+)\.d\.codeartifact\.([^.]+)\.(?:amazonaws\..+|on\.aws)$`, yielding
   domain / owner / region. Rejects anything else with a `MalformedURLException` naming the
@@ -124,42 +139,92 @@ repositories {
 }
 ```
 
+The helper also takes the static credentials of a service account instead of a profile:
+
+```kotlin
+import ai.clarity.codeartifact.CodeArtifactCredentials
+import ai.clarity.codeartifact.codeartifact
+
+repositories {
+  codeartifact(
+    "https://my-domain-111122223333.d.codeartifact.us-west-2.amazonaws.com/maven/my-repo/",
+    CodeArtifactCredentials.of(accessKeyId, secretAccessKey)   // third arg: sessionToken
+  )
+}
+```
+
+```groovy
+// Groovy takes a map, and rejects an unknown key by name
+repositories {
+  codeartifact('https://…/maven/my-repo/', [accessKeyId: id, secretAccessKey: secret])
+}
+```
+
 Two traps:
 
-- **Without the Kotlin import you get `Unresolved reference 'codeartifact'`** (a fully-qualified
+- **Without the Kotlin imports you get `Unresolved reference 'codeartifact'`** (a fully-qualified
   `ai.clarity.codeartifact.codeartifact(...)` call does not work either — it is an extension
-  function).
-- **The profile defaults to the literal `"default"`**, not to the resolution chain below. With
-  `CODEARTIFACT_PROFILE=dev` set, `codeartifact(url)` still logs
-  `in profile default`. Pass the profile explicitly if you need another one.
+  function). `CodeArtifactCredentials` needs its own import.
+- **With no profile and no service credentials the helper falls back to the literal `"default"`
+  profile**, not to the rest of the chain below. With `CODEARTIFACT_PROFILE=dev` set,
+  `codeartifact(url)` still logs `in profile default`. Pass the profile explicitly if you need
+  another one. Build-wide service credentials *are* honoured on this path.
 
 Both work in `dependencyResolutionManagement` inside `settings.gradle(.kts)` too, but **not**
 in `pluginManagement`: that block is evaluated before `plugins { }` applies the plugin, so the
 method does not exist yet (`Could not find method codeartifact()`).
 
-## 5. Profile resolution
+## 5. Credentials resolution
 
-Verified order, highest precedence first:
+Verified order, highest precedence first. Steps 1 and 2 are per repository, the rest are
+build-wide:
 
 | # | Source | Verified behaviour |
 |---|---|---|
-| 1 | `?profile=<name>` in the repository URL | wins over everything; stripped from the final URL |
-| 2 | `-Dcodeartifact.profile=<name>` / `systemProp.codeartifact.profile=<name>` in `gradle.properties` | command line overrides the properties file |
-| 3 | `CODEARTIFACT_PROFILE` env var | used when 1 and 2 are absent |
-| 4 | nothing → profile is `null` | the AWS SDK default chain runs, so `AWS_PROFILE`, SSO caches and instance roles apply |
+| 1 | `CodeArtifactCredentials` passed to `codeartifact()` (Kotlin) or a credentials map (Groovy) | wins over everything |
+| 2 | `?profile=<name>` in the URL, or a profile passed to `codeartifact()` | beats every build-wide setting; the query param is stripped from the final URL |
+| 3 | `codeartifact.accessKeyId` + `codeartifact.secretAccessKey` (`systemProp.`/`-D`), else `CODEARTIFACT_ACCESS_KEY_ID` + `CODEARTIFACT_SECRET_ACCESS_KEY` | static service-account keys; optional `codeartifact.sessionToken` / `CODEARTIFACT_SESSION_TOKEN` for temporary ones |
+| 4 | `-Dcodeartifact.profile=<name>` / `systemProp.codeartifact.profile=<name>` | command line overrides the properties file |
+| 5 | `CODEARTIFACT_PROFILE` env var | used when 1-4 are absent |
+| 6 | nothing → profile is `null` | the AWS SDK default chain runs, so `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, SSO caches and instance roles apply |
+
+Two asymmetries worth knowing, both measured:
+
+- **Steps 4 and 5 apply to automatic detection only.** A repository declared with
+  `codeartifact()` and no explicit profile falls back to the `default` profile instead, so
+  `codeartifact.profile` and `CODEARTIFACT_PROFILE` have no effect on it. Step 3 *does* reach it.
+- **Setting exactly one of the two required step-3 values fails the build** with
+  `Incomplete CodeArtifact service credentials: …`, naming the missing half — but only when
+  steps 1 and 2 did not already settle the authentication. With a `?profile=` in the URL the
+  half-configured pair is ignored instead of reported.
 
 `codeartifact.profile` must carry the `systemProp.` prefix in `gradle.properties`; a plain
-`codeartifact.profile=dev` becomes a Gradle project property, which the plugin never reads.
+`codeartifact.profile=dev` becomes a Gradle project property, which the plugin never reads. The
+same applies to `codeartifact.accessKeyId` and `codeartifact.secretAccessKey`.
 
 Recommended pattern for teams: commit `systemProp.codeartifact.profile=dev` and let CI override
 with `-Dcodeartifact.profile=ci`. Do not mix it with `?profile=`, which would defeat the override.
+CI that has no `~/.aws/credentials` at all should export the `CODEARTIFACT_*` keys instead.
+
+### Secret handling
+
+Never put the keys in the project `gradle.properties` — use `~/.gradle/gradle.properties` or the
+CI secret store. There is deliberately no `?accessKeyId=` query param, because the repository URL
+reaches build scans, caches and logs. What the plugin does guarantee, all verified:
+
+- only a masked access key id (`AKIA************MPLE`) is logged, never the secret;
+- `CodeArtifactCredentials.toString()` is redacted, so a Gradle error message cannot leak it;
+- the token cache key hashes the credentials (SHA-256) instead of holding them in clear, and
+  profile entries never collide with service-credential entries;
+- a failing token request at `--debug --stacktrace` produced 6249 log lines with **0**
+  occurrences of the secret and 0 of the unmasked access key id.
 
 ## 6. Testing
 
 ```bash
-./gradlew test --rerun-tasks            # 44 tests, all green
-./gradlew functionalTest --rerun-tasks  # 71 tests, all green
-./gradlew build                         # both + validatePlugins; ~1m30s from clean
+./gradlew test --rerun-tasks            # 86 tests, all green
+./gradlew functionalTest --rerun-tasks  # 85 tests, all green
+./gradlew build                         # both + validatePlugins; ~4m from clean
 ```
 
 - **Unit tests** use `ProjectBuilder` / `ProjectBuilder`-backed settings and
@@ -208,7 +273,7 @@ profile, since `ProfileCredentialsProvider` bypasses `AWS_ACCESS_KEY_ID`.
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `.github/workflows/build.yml` | every `push` | JDK 21 (temurin, gradle cache) → `./gradlew build` → publishes the JUnit XML as a check |
+| `.github/workflows/build.yml` | `push` to `main` + every `pull_request` | JDK 21 (temurin, gradle cache) → `./gradlew build` → publishes the JUnit XML as a check. The `pull_request` trigger matters: the repo takes PRs from forks, and a fork push never fires `on: push` in the upstream repo. |
 | `.github/workflows/publish.yml` | push of any **tag** | JDK 21 → appends `gradle.publish.key/secret` from repo secrets to `gradle.properties` → `./gradlew publishPlugins` |
 
 Version lives in `gradle.properties` (`version=0.1.3-SNAPSHOT`). `net.researchgate.release`
@@ -224,23 +289,22 @@ Never run `release` or `publishPlugins` from an agent session — both are outwa
 |---|---|
 | Repository silently unauthenticated, URL ends in `.on.aws` | `isCodeArtifactUri` requires `.amazonaws.`; dualstack endpoints are not auto-detected. Use the explicit `codeartifact(url)` helper, which accepts them. |
 | `Not a valid CodeArtifact repository URL: …` | Host does not match `{domain}-{owner}.d.codeartifact.{region}.…` — e.g. a missing `-{owner}`, or a VPC endpoint. Fails the build by design. |
-| `Unresolved reference 'codeartifact'` | Missing `import ai.clarity.codeartifact.codeartifact` in a `.kts` file. |
+| `Unresolved reference 'codeartifact'` | Missing `import ai.clarity.codeartifact.codeartifact` in a `.kts` file (`CodeArtifactCredentials` needs its own import). |
 | `Could not find method codeartifact()` inside `pluginManagement` | The block runs before the plugin is applied. Use `maven { url = … }` there. |
-| Wrong profile used by `codeartifact(url)` | It hardcodes `"default"`; env vars and system properties are ignored on that path. |
+| Wrong profile used by `codeartifact(url)` | With no profile it falls back to `"default"`; `codeartifact.profile` and `CODEARTIFACT_PROFILE` are ignored on that path, though build-wide service credentials are honoured. |
+| `Incomplete CodeArtifact service credentials: …` | Exactly one of `codeartifact.accessKeyId` / `codeartifact.secretAccessKey` (or their `CODEARTIFACT_*` env equivalents) is set. Set both, or unset both. |
 | `Timeout waiting to lock journal cache` | Gradle running inside the Claude Code sandbox. Disable the sandbox. |
 | Credentials not injected on a CodeArtifact URL | The repository already had a username or password; the plugin skips those. |
 
 ## 10. README discrepancies (as of 2026-09-01)
 
 1. Every example pins `version "0.1.1"`; the latest published version is **0.1.2**.
-2. "The `codeartifact` helper method is **NOT available** in `settings.gradle(.kts)`" — false.
-   It works in `dependencyResolutionManagement` in both DSLs; it fails only in `pluginManagement`.
-3. The Kotlin `codeartifact(...)` snippets omit `import ai.clarity.codeartifact.codeartifact`
-   and therefore do not compile.
-4. Dualstack `.on.aws` endpoints are undocumented and not auto-detected.
-5. The "Profile resolution order" section applies to automatic detection only, not to the
-   explicit `codeartifact()` helper — the README does not say so.
+2. Dualstack `.on.aws` endpoints are undocumented and not auto-detected (see §9).
 
-Everything else in the README (automatic detection, publishing repositories, the four profile
-mechanisms, the `?profile=` stripping, the `gradle.properties` + CI-override pattern) was
-reproduced and holds.
+Three earlier defects are fixed: the false "the helper is not available in `settings.gradle(.kts)`"
+note, the missing Kotlin imports in the `codeartifact(...)` snippets, and the resolution-order
+list that did not say steps 4-5 skip the helper path.
+
+Everything else in the README (automatic detection, publishing repositories, the profile
+mechanisms, the service-account credentials, the `?profile=` stripping, the `gradle.properties` +
+CI-override pattern) was reproduced and holds.

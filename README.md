@@ -94,7 +94,9 @@ Instead of relying on automatic detection via `maven { url ... }`, you can use t
 directly on the `repositories` block. This method accepts the repository URL, an optional profile name or the
 [credentials of a service account](#service-account-credentials), and an optional configuration closure/action.
 
-> **Note:** The `Explicit codeartifact method` can only be used inside the `build.gradle` or `build.gradle.kts` files.
+> **Note:** The `codeartifact()` helper can be used in `build.gradle(.kts)`, and in `settings.gradle(.kts)` inside
+> `dependencyResolutionManagement`. It cannot be used inside `pluginManagement`, which Gradle evaluates before the
+> `plugins { }` block applies this plugin. Use `maven { url ... }` there and rely on automatic detection.
 
 ### Kotlin DSL
 
@@ -151,7 +153,9 @@ repositories {
 Applying the plugin in `settings.gradle.kts` or `settings.gradle` allows you to centralize repository configuration for all projects in the
 build, including `pluginManagement` and `dependencyResolutionManagement`.
 
-> **Note:** The `codeartifact` helper method is **NOT available** in `settings.gradle(.kts)`. You must use the standard `maven { url ... }` approach for automatic detection instead.
+> **Note:** Inside `pluginManagement` the `codeartifact()` helper is not available, because Gradle evaluates that
+> block before the `plugins { }` block applies this plugin. Use the standard `maven { url ... }` approach there and
+> rely on automatic detection. Inside `dependencyResolutionManagement` the helper does work.
 
 #### Kotlin DSL
 
@@ -392,8 +396,9 @@ repositories {
 }
 ```
 
-> **Note:** as for the profile, the `codeartifact()` helper is not available in `settings.gradle(.kts)`. Use the
-> build-wide configuration above for the repositories declared there.
+> **Note:** the `codeartifact()` helper also works in `settings.gradle(.kts)` inside
+> `dependencyResolutionManagement`, but not inside `pluginManagement`. Use the build-wide configuration above for
+> the repositories declared there.
 
 ## Credentials resolution order
 
@@ -406,8 +411,15 @@ the same level:
    matching `CODEARTIFACT_*` environment variable second
 4. `codeartifact.profile` Java system property
 5. `CODEARTIFACT_PROFILE` environment variable
-6. The AWS SDK default credentials provider chain (`AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, instance roles, …) for the
-   repositories detected automatically, and the `default` profile for the ones declared with the `codeartifact()` helper
+6. The AWS SDK default credentials provider chain (`AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, instance roles, …)
+
+> **Note:** steps 4 and 5 only apply to the repositories detected automatically. A repository declared with the
+> `codeartifact()` helper and no explicit profile falls back to the `default` profile instead, so `codeartifact.profile`
+> and `CODEARTIFACT_PROFILE` have no effect on it. Pass the profile to the helper if you need another one.
+
+The incomplete-configuration check on step 3 runs only when steps 1 and 2 did not already settle the authentication:
+with a `?profile=` in the URL, or a profile passed to the helper, a half-configured pair of service credentials is
+ignored rather than reported.
 
 ## License
 
