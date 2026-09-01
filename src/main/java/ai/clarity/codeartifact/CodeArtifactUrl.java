@@ -24,16 +24,24 @@ import java.util.regex.Pattern;
 
 class CodeArtifactUrl {
 
-  // Accepts the public CodeArtifact repository hosts, both the standard endpoint
-  // ({domain}-{owner}.d.codeartifact.{region}.amazonaws.com) and the dualstack one
-  // ({domain}-{owner}.d.codeartifact.{region}.on.aws). VPC endpoints
-  // (vpce-*.d.codeartifact.{region}.vpce.amazonaws.com) carry the domain and owner in
-  // the path instead of the host and are not supported.
+  // Accepts the two public CodeArtifact repository hosts that GetRepositoryEndpoint returns:
+  //
+  //   ipv4       {domain}-{owner}.d.codeartifact.{region}.amazonaws.com
+  //   dualstack  {domain}-{owner}.codeartifact.{region}.on.aws
+  //
+  // The dualstack host has no ".d." segment — verified against a live domain with
+  // `aws codeartifact get-repository-endpoint --endpoint-type dualstack`. The two shapes are
+  // paired with their own suffix rather than folded together, so a host that mixes them is
+  // reported as invalid instead of being sent to a name that never resolves.
+  //
+  // VPC endpoints (vpce-*.d.codeartifact.{region}.vpce.amazonaws.com) carry the domain and owner
+  // in the path instead of the host and are not supported.
   private static final Pattern HOST_PATTERN = Pattern.compile(
-    "(?i)^([^.]+)-([^-.]+)\\.d\\.codeartifact\\.([^.]+)\\.(?:amazonaws\\..+|on\\.aws)$");
+    "(?i)^([^.]+)-([^-.]+)\\.(?:d\\.codeartifact\\.([^.]+)\\.amazonaws\\..+|codeartifact\\.([^.]+)\\.on\\.aws)$");
 
   private static final String EXPECTED_FORMAT =
-    "https://{domain}-{owner}.d.codeartifact.{region}.amazonaws.com/{format}/{repository}/";
+    "https://{domain}-{owner}.d.codeartifact.{region}.amazonaws.com/{format}/{repository}/ "
+      + "or https://{domain}-{owner}.codeartifact.{region}.on.aws/{format}/{repository}/";
 
   private final URL url;
   private final String artifactDomain;
@@ -51,7 +59,8 @@ class CodeArtifactUrl {
     path = url.getPath();
     artifactDomain = host.group(1);
     artifactOwner = host.group(2);
-    region = host.group(3);
+    // Only one of the two alternatives matches, so exactly one region group is set
+    region = host.group(3) != null ? host.group(3) : host.group(4);
   }
 
   public CodeArtifactUrl(String artifactDomain, String artifactOwner, String region, String path) throws MalformedURLException {

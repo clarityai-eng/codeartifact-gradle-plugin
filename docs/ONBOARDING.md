@@ -306,7 +306,7 @@ Never run `release` or `publishPlugins` from an agent session — both are outwa
 
 | Symptom | Cause |
 |---|---|
-| Repository silently unauthenticated, URL ends in `.on.aws` | `isCodeArtifactUri` requires `.amazonaws.`; dualstack endpoints are not auto-detected. Use the explicit `codeartifact(url)` helper, which accepts them. |
+| `Not a valid CodeArtifact repository URL` on an `.on.aws` host | The dualstack host has no `.d.` segment: `{domain}-{owner}.codeartifact.{region}.on.aws`. Copy it from `aws codeartifact get-repository-endpoint --endpoint-type dualstack` rather than editing the ipv4 one by hand. |
 | `Not a valid CodeArtifact repository URL: …` | Host does not match `{domain}-{owner}.d.codeartifact.{region}.…` — e.g. a missing `-{owner}`, or a VPC endpoint. Fails the build by design. |
 | `Unresolved reference 'codeartifact'` | Missing `import ai.clarity.codeartifact.codeartifact` in a `.kts` file (`CodeArtifactCredentials` needs its own import). |
 | `Could not find method codeartifact()` inside `pluginManagement` | The block runs before the plugin is applied. Use `maven { url = … }` there. |
@@ -320,7 +320,7 @@ Never run `release` or `publishPlugins` from an agent session — both are outwa
 
 ## 10. README discrepancies (as of 2026-09-01)
 
-One left: dualstack `.on.aws` endpoints are undocumented and not auto-detected (see §9).
+None left. Dualstack `.on.aws` endpoints are auto-detected since 0.2.2.
 
 Four earlier defects are fixed: the stale version pins in the examples, the false "the helper is
 not available in `settings.gradle(.kts)`" note, the missing Kotlin imports in the

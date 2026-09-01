@@ -103,6 +103,10 @@ experiments):
 1. Non-CodeArtifact repositories are left completely untouched (credentials stay `null`).
 2. A CodeArtifact repository that **already has credentials** is skipped.
 3. `?profile=<name>` is read from the URL and then **stripped** from the final repository URL.
+   Both public host shapes are detected and parsed: the ipv4 one
+   (`{domain}-{owner}.d.codeartifact.{region}.amazonaws.com`) and the dualstack one
+   (`{domain}-{owner}.codeartifact.{region}.on.aws`, which has **no** `.d.` segment). A host that
+   mixes the two is rejected.
 4. Credentials precedence, closest-to-the-repository first: credentials passed to
    `codeartifact()` → `?profile=` or a profile passed to `codeartifact()` →
    `codeartifact.accessKeyId`/`secretAccessKey` → `codeartifact.profile` → *null* (AWS default
@@ -128,10 +132,6 @@ experiments):
 
 ## Known gaps — do not document these as working
 
-- **Dualstack `.on.aws` endpoints are not auto-detected.** `CodeArtifactUrl` accepts them, but
-  `CodeartifactRepositoryConfigurer.isCodeArtifactUri` requires `.amazonaws.`, so a
-  `maven { url = ".../codeartifact.<region>.on.aws/..." }` silently gets no credentials. The
-  explicit `codeartifact(...)` helper *does* work with dualstack URLs.
 - **VPC endpoints are unsupported by design** (domain/owner live in the path, not the host).
 - **`codeartifact(url)` with no profile falls back to the `default` profile** — it honours the
   build-wide service credentials, but still ignores `codeartifact.profile`,

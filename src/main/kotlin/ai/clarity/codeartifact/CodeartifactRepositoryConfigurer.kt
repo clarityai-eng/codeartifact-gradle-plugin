@@ -142,8 +142,13 @@ internal object CodeartifactRepositoryConfigurer {
     return mavenRepo.credentials.password == null && mavenRepo.credentials.username == null
   }
 
+  // Matched against the host alone, so that a CodeArtifact-looking path cannot pass for an
+  // endpoint. Covers the ipv4 host ({domain}-{owner}.d.codeartifact.{region}.amazonaws.com) and the
+  // dualstack one ({domain}-{owner}.codeartifact.{region}.on.aws), which has no ".d." segment.
+  private val CODEARTIFACT_HOST = "(?i).+\\.codeartifact\\..+\\.(?:amazonaws\\..+|on\\.aws)".toRegex()
+
   private fun isCodeArtifactUri(uri: URI): Boolean {
-    return uri.toString().matches("(?i).+\\.codeartifact\\..+\\.amazonaws\\..+".toRegex())
+    return uri.host?.matches(CODEARTIFACT_HOST) == true
   }
 
   private fun getProfileFromUri(uri: URI): String? {
