@@ -90,6 +90,12 @@ tasks.named<Test>("test") {
   useJUnitPlatform()
 }
 
+tasks.javadoc {
+  // The javadoc jar is part of the publication, so a missing comment ships to consumers' IDEs. The whole surface is
+  // documented; -Werror is what stops it regrowing, and `javadoc` already runs as part of `build`.
+  (options as StandardJavadocDocletOptions).addBooleanOption("Werror", true)
+}
+
 
 release {
   git {

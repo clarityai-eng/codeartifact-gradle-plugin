@@ -26,7 +26,7 @@ Use the AWS documentation placeholders (`my-domain-111122223333`, `us-west-2`) a
 | AWS | `software.amazon.awssdk` BOM — `codeartifact`, `sts`, `sso`, `ssooidc` |
 | Tests | JUnit 5 + AssertJ + MockK; Gradle TestKit for `functionalTest` |
 | Release | `net.researchgate.release` + `com.gradle.plugin-publish`, GitHub Actions |
-| Lint/format | **none configured** — match surrounding style by hand |
+| Lint/format | no linter or formatter; `javadoc -Werror` is the only automated gate — match surrounding style by hand |
 
 ## Commands
 
@@ -142,7 +142,10 @@ experiments):
 - **The `codeartifact()` helper does not work inside `pluginManagement`** (that block runs
   before `plugins { }` applies the plugin). It does work inside
   `dependencyResolutionManagement`, in both DSLs.
-- **No linter or formatter** is wired into the build; `./gradlew check` will not catch style.
+- **No linter or formatter** is wired into the build; `./gradlew check` will not catch style. The one
+  automated gate is `javadoc -Werror`: every public member of the four Java classes is documented, and
+  `javadoc` runs as part of `build`, so an undocumented one fails the build. Kotlin is not covered — there
+  is no Dokka.
 
 ## README caveats
 

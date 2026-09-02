@@ -56,10 +56,27 @@ public final class CodeArtifactCredentials {
     this.sessionToken = emptyToNull(sessionToken);
   }
 
+  /**
+   * Builds the long-lived credentials of an IAM user.
+   *
+   * @param accessKeyId     the access key id, required
+   * @param secretAccessKey the secret access key, required
+   * @return the credentials
+   * @throws IllegalArgumentException when either value is missing or blank
+   */
   public static CodeArtifactCredentials of(String accessKeyId, String secretAccessKey) {
     return new CodeArtifactCredentials(accessKeyId, secretAccessKey, null);
   }
 
+  /**
+   * Builds the credentials of an IAM user, or the temporary ones of an assumed role when a session token is given.
+   *
+   * @param accessKeyId     the access key id, required
+   * @param secretAccessKey the secret access key, required
+   * @param sessionToken    the session token of temporary credentials, or {@code null} for long-lived ones
+   * @return the credentials
+   * @throws IllegalArgumentException when the access key id or the secret access key is missing or blank
+   */
   public static CodeArtifactCredentials of(String accessKeyId, String secretAccessKey, String sessionToken) {
     return new CodeArtifactCredentials(accessKeyId, secretAccessKey, sessionToken);
   }
@@ -67,6 +84,12 @@ public final class CodeArtifactCredentials {
   /**
    * Builds the credentials from a map, which is the shape the Groovy DSL passes them in, as in
    * {@code codeartifact(url, [accessKeyId: '...', secretAccessKey: '...'])}.
+   *
+   * @param values the credentials keyed by {@code accessKeyId}, {@code secretAccessKey} and, optionally,
+   *               {@code sessionToken}
+   * @return the credentials
+   * @throws IllegalArgumentException when the map carries an unsupported key, or the access key id or the secret
+   *                                  access key is missing or blank
    */
   public static CodeArtifactCredentials of(Map<?, ?> values) {
     Set<String> unsupported = new LinkedHashSet<>();
@@ -87,12 +110,20 @@ public final class CodeArtifactCredentials {
       asString(values.get(SESSION_TOKEN), SESSION_TOKEN));
   }
 
+  /**
+   * Returns the access key id in clear. Use {@link #getMaskedAccessKeyId()} for anything that reaches a log.
+   *
+   * @return the access key id
+   */
   public String getAccessKeyId() {
     return accessKeyId;
   }
 
   /**
    * The access key id with its middle section hidden, safe to write to the build log.
+   *
+   * @return the access key id with all but its first and last four characters replaced by asterisks, or fully masked
+   *         when it is eight characters or shorter
    */
   public String getMaskedAccessKeyId() {
     if (accessKeyId.length() <= 8) {
