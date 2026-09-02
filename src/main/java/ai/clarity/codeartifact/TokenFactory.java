@@ -24,8 +24,26 @@ import software.amazon.awssdk.services.codeartifact.CodeartifactClient;
 import software.amazon.awssdk.services.codeartifact.CodeartifactClientBuilder;
 import software.amazon.awssdk.services.codeartifact.model.GetAuthorizationTokenResponse;
 
+/**
+ * Calls the CodeArtifact {@code GetAuthorizationToken} API.
+ *
+ * <p>Every overload issues a request; the caching lives in {@link CodeArtifactToken}.
+ */
 public class TokenFactory {
 
+  private TokenFactory() {
+    // Static-only utility
+  }
+
+  /**
+   * Requests the token for a repository url with the given AWS profile.
+   *
+   * @param codeArtifactUrl the CodeArtifact repository url
+   * @param profileName     the AWS profile to authenticate with, or {@code null} to use the default credentials
+   *                        provider chain
+   * @return the API response carrying the authorization token and its expiration
+   * @throws MalformedURLException when {@code codeArtifactUrl} is not a valid CodeArtifact repository url
+   */
   public static GetAuthorizationTokenResponse getAuthorizationToken(String codeArtifactUrl, String profileName)
     throws MalformedURLException {
     return getAuthorizationToken(CodeArtifactUrl.of(codeArtifactUrl), profileName);
@@ -34,6 +52,11 @@ public class TokenFactory {
   /**
    * Requests the token with the given AWS profile, or with the default credentials provider chain when
    * {@code profileName} is {@code null}.
+   *
+   * @param codeArtifactUrl the parsed CodeArtifact repository url, which carries the region the client targets
+   * @param profileName     the AWS profile to authenticate with, or {@code null} to use the default credentials
+   *                        provider chain
+   * @return the API response carrying the authorization token and its expiration
    */
   public static GetAuthorizationTokenResponse getAuthorizationToken(CodeArtifactUrl codeArtifactUrl, String profileName) {
     return requestToken(codeArtifactUrl, profileName == null ? null : ProfileCredentialsProvider.create(profileName));
@@ -41,6 +64,10 @@ public class TokenFactory {
 
   /**
    * Requests the token with the static credentials of a service account, bypassing the local AWS profiles.
+   *
+   * @param codeArtifactUrl the parsed CodeArtifact repository url, which carries the region the client targets
+   * @param credentials     the service account credentials to authenticate with
+   * @return the API response carrying the authorization token and its expiration
    */
   public static GetAuthorizationTokenResponse getAuthorizationToken(CodeArtifactUrl codeArtifactUrl,
                                                                     CodeArtifactCredentials credentials) {
