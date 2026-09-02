@@ -111,7 +111,7 @@ Gradle cannot run inside the Claude Code sandbox — disable it for every `./gra
 
 ```kotlin
 // build.gradle.kts
-plugins { id("ai.clarity.codeartifact") version "0.2.1" }
+plugins { id("ai.clarity.codeartifact") version "0.2.2" }
 repositories {
   maven { url = uri("https://my-domain-111122223333.d.codeartifact.us-west-2.amazonaws.com/maven/my-repo/") }
 }
@@ -239,7 +239,7 @@ reaches build scans, caches and logs. What the plugin does guarantee, all verifi
 ## 6. Testing
 
 ```bash
-./gradlew test --rerun-tasks            # 102 tests, all green
+./gradlew test --rerun-tasks            # 105 tests, all green
 ./gradlew functionalTest --rerun-tasks  # 106 tests, all green
 ./gradlew build                         # both + validatePlugins; ~4m from clean
 ```

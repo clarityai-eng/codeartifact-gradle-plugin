@@ -34,7 +34,7 @@ All verified on this checkout (`main`, 2026-09-01).
 
 ```bash
 ./gradlew build            # compile + unit tests + functionalTest + validatePlugins
-./gradlew test             # 102 unit tests
+./gradlew test             # 105 unit tests
 ./gradlew functionalTest   # 106 TestKit tests across Gradle 8.4, 8.7, 8.14, 9.1.0, 9.4.0
 ./gradlew publishToMavenLocal   # for trying the plugin from a scratch project
 ./gradlew tasks --all

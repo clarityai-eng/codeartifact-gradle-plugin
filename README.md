@@ -34,7 +34,7 @@ In your `build.gradle.kts` file:
 
 ```kotlin
 plugins {
-  id("ai.clarity.codeartifact") version "0.2.1"
+  id("ai.clarity.codeartifact") version "0.2.2"
 }
 
 repositories {
@@ -50,7 +50,7 @@ In your `build.gradle.kts` file:
 
 ```kotlin
 plugins {
-  id("ai.clarity.codeartifact") version "0.2.1"
+  id("ai.clarity.codeartifact") version "0.2.2"
 }
 
 publishing {
@@ -70,7 +70,7 @@ In your `build.gradle` file:
 
 ```groovy
 plugins {
-    id 'ai.clarity.codeartifact' version '0.2.1'
+    id 'ai.clarity.codeartifact' version '0.2.2'
 }
 
 repositories {
@@ -86,7 +86,7 @@ In your `build.gradle` file:
 
 ```groovy
 plugins {
-    id 'ai.clarity.codeartifact' version '0.2.1'
+    id 'ai.clarity.codeartifact' version '0.2.2'
 }
 
 publishing {
@@ -175,7 +175,7 @@ In your `settings.gradle.kts` file:
 
 ```kotlin
 plugins {
-  id("ai.clarity.codeartifact") version "0.2.1"
+  id("ai.clarity.codeartifact") version "0.2.2"
 }
 
 dependencyResolutionManagement {
@@ -193,7 +193,7 @@ In your `settings.gradle.kts` file:
 
 ```kotlin
 plugins {
-  id("ai.clarity.codeartifact") version "0.2.1"
+  id("ai.clarity.codeartifact") version "0.2.2"
 }
 
 pluginManagement {
@@ -213,7 +213,7 @@ In your `settings.gradle` file:
 
 ```groovy
 plugins {
-    id 'ai.clarity.codeartifact' version '0.2.1'
+    id 'ai.clarity.codeartifact' version '0.2.2'
 }
 
 dependencyResolutionManagement {
@@ -231,7 +231,7 @@ In your `settings.gradle` file:
 
 ```groovy
 plugins {
-    id 'ai.clarity.codeartifact' version '0.2.1'
+    id 'ai.clarity.codeartifact' version '0.2.2'
 }
 
 pluginManagement {
