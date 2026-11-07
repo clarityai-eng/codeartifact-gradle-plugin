@@ -38,6 +38,7 @@ internal object CodeArtifactAuthenticator {
    */
   fun getToken(
     tokenService: CodeArtifactToken,
+    profileTokens: ProfileTokens,
     logger: Logger,
     settings: SettingLookup,
     repoUrl: String,
@@ -54,6 +55,6 @@ internal object CodeArtifactAuthenticator {
     val resolvedProfile = profile ?: fallbackProfile
     logger.info("Getting token for {} in profile {}", repoUrl, resolvedProfile)
 
-    return tokenService.getToken(repoUrl, resolvedProfile)
+    return tokenService.getToken(repoUrl, resolvedProfile) { profileTokens.obtain(repoUrl, resolvedProfile) }
   }
 }

@@ -19,6 +19,7 @@ package ai.clarity.codeartifact;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 import org.gradle.api.services.BuildService;
 import org.gradle.api.services.BuildServiceParameters;
 import org.gradle.api.services.BuildServiceParameters.None;
@@ -97,6 +98,12 @@ public class CodeArtifactToken implements BuildService<None> {
     return tokensCache
       .computeIfAbsent(credentials.cacheKey() + "@" + uri,
         k -> TokenFactory.getAuthorizationToken(codeArtifactUrl, credentials).authorizationToken());
+  }
+
+  // Shares one token per profile and url across the build, obtaining it from fetch the first time
+  String getToken(String uri, String profile, Supplier<String> fetch) throws MalformedURLException {
+    CodeArtifactUrl.of(uri);
+    return tokensCache.computeIfAbsent("profile:" + profile + "@" + uri, k -> fetch.get());
   }
 
   /**
