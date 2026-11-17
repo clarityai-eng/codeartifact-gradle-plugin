@@ -24,18 +24,19 @@ Use the AWS documentation placeholders (`my-domain-111122223333`, `us-west-2`) a
 | JVM | Gradle toolchain **21**; a newer local JDK is fine (verified on JDK 25 launcher) |
 | Build | Gradle **9.7.1** via wrapper, Kotlin DSL, version catalog `gradle/libs.versions.toml` |
 | AWS | `software.amazon.awssdk` BOM — `codeartifact`, `sts`, `sso`, `ssooidc` |
-| Tests | JUnit 5 + AssertJ + MockK; Gradle TestKit for `functionalTest` |
+| Tests | JUnit 5 + AssertJ + MockK; Gradle TestKit for `functionalTest`; Testcontainers + AWS Emulator for `integrationTest` |
 | Release | `net.researchgate.release` + `com.gradle.plugin-publish`, GitHub Actions |
 | Lint/format | no linter or formatter; `javadoc -Werror` is the only automated gate — match surrounding style by hand |
 
 ## Commands
 
-All verified on this checkout (`main`, 2026-09-01).
+All verified on this checkout (2026-11-17).
 
 ```bash
-./gradlew build            # compile + unit tests + functionalTest + validatePlugins
+./gradlew build            # compile + unit, functional and integration tests + validatePlugins
 ./gradlew test             # 105 unit tests
-./gradlew functionalTest   # 106 TestKit tests across Gradle 8.4, 8.7, 8.14, 9.1.0, 9.4.0
+./gradlew functionalTest   # 101 TestKit tests across Gradle 8.4, 8.7, 8.14, 9.1.0, 9.4.0
+./gradlew integrationTest  # 12 tests against AWS Emulator, in Docker
 ./gradlew publishToMavenLocal   # for trying the plugin from a scratch project
 ./gradlew tasks --all
 ```
@@ -43,6 +44,11 @@ All verified on this checkout (`main`, 2026-09-01).
 `./gradlew build` from clean: ~4m (`functionalTest` dominates — it boots five Gradle
 distributions). Tests are heavily `UP-TO-DATE`-cached; add `--rerun-tasks` when you need proof
 they actually ran.
+
+`integrationTest` (part of `check`, so of `build`) needs a running Docker daemon. It builds the
+AWS Emulator image from `src/integrationTest/resources/aws-emulator/Dockerfile`, which downloads a
+~190 MB package, and starts one container for the whole run. Without Docker, run
+`./gradlew build -x integrationTest`.
 
 Do **not** run `./gradlew release` or `publishPlugins` — they mutate git (tag + version commits,
 `requireBranch = "main"`) and publish publicly. Releases happen by pushing a tag; see
@@ -52,7 +58,8 @@ Do **not** run `./gradlew release` or `publishPlugins` — they mutate git (tag 
 
 Gradle cannot run inside the Claude Code sandbox (it hangs on
 `Timeout waiting to lock journal cache`, because the sandbox PID namespace breaks lock-owner
-validation). Run every `./gradlew` invocation with the sandbox disabled.
+validation). Run every `./gradlew` invocation with the sandbox disabled. `integrationTest` also
+needs the Docker socket, which the sandbox blocks.
 
 ## Layout
 
@@ -74,7 +81,10 @@ src/main/java/ai/clarity/codeartifact/
   CodeArtifactUrl.java                 # host parsing -> domain / owner / region
   URIBuilder.java                      # immutable-ish URI query-param editing
 src/test/{kotlin,java}/...             # unit tests (ProjectBuilder + MockK on TokenFactory)
-src/functionalTest/kotlin/...          # TestKit tests, incl. a stubbed CodeArtifact endpoint
+src/functionalTest/kotlin/...          # TestKit tests that need no CodeArtifact endpoint
+src/integrationTest/kotlin/...         # TokenFactory and TestKit tests against AWS Emulator;
+                                       #   AwsEmulator.kt starts and wires the shared container
+src/integrationTest/resources/aws-emulator/Dockerfile  # the emulator image (AWS publishes none)
 .github/workflows/build.yml            # CI: JDK 21, ./gradlew build, on every push
 .github/workflows/publish.yml          # Release: on tag push, ./gradlew publishPlugins
 ```
@@ -89,9 +99,15 @@ src/functionalTest/kotlin/...          # TestKit tests, incl. a stubbed CodeArti
   add `IND-`/`IE-` scopes here, even though the global instructions ask for them elsewhere.
 - Trunk-based: `main` is the only long-lived branch, PRs into it, Dependabot handles bumps.
 - Tests use `// Given: / // When: / // Then:` comments and AssertJ (`assertThat`).
-  Unit tests fake AWS with `mockkStatic(TokenFactory::class)`; functional tests either expect
-  `buildAndFail()` (no AWS creds) or point the SDK at a local stub via
-  `AWS_ENDPOINT_URL_CODEARTIFACT`.
+  Unit tests fake AWS with `mockkStatic(TokenFactory::class)`; functional tests expect
+  `buildAndFail()` (no AWS creds) and assert which credentials were chosen from the `--info` log.
+  Anything that needs a real token response goes to `integrationTest`, against AWS Emulator.
+- Integration tests reach the emulator only through `AwsEmulator`: in-process clients through JVM
+  system properties, TestKit builds through `AwsEmulator.buildEnvironment()` plus
+  `AwsEmulator.daemonTrustStoreProperty` in their `gradle.properties`. The emulator checks SigV4
+  signatures, so a scenario proves which credentials signed the request by offering the accepted
+  keys through the source under test and rejected keys through the source it must win over.
+  Repository URLs use the account `000000000000`, the only one the emulator acts as.
 - Adding a Gradle version to the compatibility matrix = one entry in
   `ClarityCodeartifactPluginFunctionalTest.gradleVersions()`.
 
@@ -128,7 +144,8 @@ experiments):
    (`AKIA************MPLE`) is logged, `CodeArtifactCredentials.toString()` is redacted, and a
    half-configured credential pair fails with `Incomplete CodeArtifact service credentials`
    rather than falling back silently. Verified at `--debug --stacktrace`: 0 occurrences of the
-   secret in 6249 log lines.
+   secret in 6249 log lines, and on every run by an integration test whose token request the
+   emulator refuses.
 
 ## Known gaps — do not document these as working
 
@@ -142,6 +159,14 @@ experiments):
 - **The `codeartifact()` helper does not work inside `pluginManagement`** (that block runs
   before `plugins { }` applies the plugin). It does work inside
   `dependencyResolutionManagement`, in both DSLs.
+- **At `--debug` the full access key id reaches the log** (never the secret). The AWS SDK's
+  default HTTP client, Apache HttpClient 5 (`apache5-client`), logs the `Authorization` header,
+  whose SigV4 credential scope carries the access key id. Found by the integration tests,
+  2026-11-17, SDK 2.57.8.
+- **The integration tests run against whatever AWS Emulator is current.** AWS publishes no
+  versioned package, only `LTS/latest`, and releases several times a day, so a red
+  `integrationTest` with no change on our side may be the emulator. Each run prints the version
+  it used (`AWS Emulator (Version: …)` in the standard output of the test report).
 - **No linter or formatter** is wired into the build; `./gradlew check` will not catch style. The one
   automated gate is `javadoc -Werror`: every public member of the four Java classes is documented, and
   `javadoc` runs as part of `build`, so an undocumented one fails the build. Kotlin is not covered — there
