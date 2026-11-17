@@ -45,9 +45,13 @@ All verified on this checkout (2026-11-17).
 distributions). Tests are heavily `UP-TO-DATE`-cached; add `--rerun-tasks` when you need proof
 they actually ran.
 
-`integrationTest` (part of `check`, so of `build`) needs a running Docker daemon. It builds the
-AWS Emulator image from `src/integrationTest/resources/aws-emulator/Dockerfile`, which downloads a
-~190 MB package, and starts one container for the whole run. Without Docker, run
+`integrationTest` (part of `check`, so of `build`) needs a running Docker daemon. It starts one
+AWS Emulator container for the whole run, from an image built out of
+`src/integrationTest/resources/aws-emulator/Dockerfile`. Building it downloads a ~190 MB package
+every time, even with every layer cached, so the image is reused while it is less than a day old:
+the task then takes ~10s instead of ~45s. The image tag is a digest of the Dockerfile and the
+architecture, so editing the Dockerfile builds a new one. To force a rebuild, remove the
+`codeartifact-gradle-plugin-aws-emulator` image. Without Docker, run
 `./gradlew build -x integrationTest`.
 
 Do **not** run `./gradlew release` or `publishPlugins` — they mutate git (tag + version commits,
@@ -165,8 +169,9 @@ experiments):
   2026-11-17, SDK 2.57.8.
 - **The integration tests run against whatever AWS Emulator is current.** AWS publishes no
   versioned package, only `LTS/latest`, and releases several times a day, so a red
-  `integrationTest` with no change on our side may be the emulator. Each run prints the version
-  it used (`AWS Emulator (Version: …)` in the standard output of the test report).
+  `integrationTest` with no change on our side may be the emulator. CI builds the image on every
+  run; a local machine reuses one for up to a day, so it can lag behind CI. Each run prints the
+  version it used (`AWS Emulator (Version: …)` in the standard output of the test report).
 - **No linter or formatter** is wired into the build; `./gradlew check` will not catch style. The one
   automated gate is `javadoc -Werror`: every public member of the four Java classes is documented, and
   `javadoc` runs as part of `build`, so an undocumented one fails the build. Kotlin is not covered — there

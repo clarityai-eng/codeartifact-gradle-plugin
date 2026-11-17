@@ -16,6 +16,8 @@
 
 package ai.clarity.codeartifact
 
+import com.github.dockerjava.api.exception.NotFoundException
+import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.images.builder.ImageFromDockerfile
@@ -29,7 +31,14 @@ import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.KeyStore
+import java.security.MessageDigest
 import java.security.cert.CertificateFactory
+import java.time.Duration
+import java.time.Instant
+import java.time.OffsetDateTime
+import java.util.HexFormat
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.Future
 import kotlin.io.path.invariantSeparatorsPathString
 import kotlin.io.path.outputStream
 import kotlin.io.path.writeText
@@ -37,8 +46,13 @@ import kotlin.io.path.writeText
 private const val EMULATOR_PORT = 9297
 private const val EMULATOR_FILES = "/home/emulator/.aws/emulator/$EMULATOR_PORT"
 private const val TRUST_STORE_PASSWORD = "changeit"
+private const val IMAGE_NAME = "codeartifact-gradle-plugin-aws-emulator"
+private const val DOCKERFILE = "aws-emulator/Dockerfile"
 
-private class EmulatorContainer(image: ImageFromDockerfile) : GenericContainer<EmulatorContainer>(image)
+// AWS releases the emulator several times a day: an image older than this is rebuilt to pick up the current release
+private val IMAGE_MAX_AGE: Duration = Duration.ofDays(1)
+
+private class EmulatorContainer(image: Future<String>) : GenericContainer<EmulatorContainer>(image)
 
 /**
  * The AWS Emulator container shared by every integration test of the JVM. It starts on first use and Testcontainers
@@ -86,11 +100,7 @@ internal object AwsEmulator {
   private val configFile: Path
 
   init {
-    val container = EmulatorContainer(
-      ImageFromDockerfile("codeartifact-gradle-plugin-aws-emulator", false)
-        .withFileFromClasspath("Dockerfile", "aws-emulator/Dockerfile")
-        .withBuildArg("EMULATOR_ARCH", emulatorArchitecture())
-    )
+    val container = EmulatorContainer(emulatorImage())
       .withCommand("-p", "$EMULATOR_PORT", "--telemetry", "off", "--idle-timeout", "600")
       .withExposedPorts(EMULATOR_PORT)
       .waitingFor(Wait.forLogMessage(".*emulator server information.*\\n", 1))
@@ -155,6 +165,38 @@ internal object AwsEmulator {
       .credentialsProvider(StaticCredentialsProvider.create(credentials))
       .build()
       .use { client -> client.createDomain { it.domain(DOMAIN) } }
+  }
+
+  /**
+   * The emulator image, reused while it is younger than [IMAGE_MAX_AGE]: a build downloads the whole emulator package
+   * again even when Docker holds every layer. The tag is a digest of the Dockerfile and the architecture, so changing
+   * either builds a new image.
+   */
+  private fun emulatorImage(): Future<String> {
+    val architecture = emulatorArchitecture()
+    val dockerfile = checkNotNull(AwsEmulator::class.java.classLoader.getResource(DOCKERFILE)) { "$DOCKERFILE is missing" }
+    val digest = MessageDigest.getInstance("SHA-256").digest(dockerfile.readBytes() + architecture.toByteArray())
+    val image = "$IMAGE_NAME:${HexFormat.of().formatHex(digest).take(12)}"
+
+    val docker = DockerClientFactory.instance().client()
+    val builtAt = try {
+      OffsetDateTime.parse(docker.inspectImageCmd(image).exec().created).toInstant()
+    } catch (notFound: NotFoundException) {
+      null
+    }
+    if (builtAt != null && builtAt.isAfter(Instant.now().minus(IMAGE_MAX_AGE))) {
+      println("Reusing the AWS Emulator image $image, built at $builtAt")
+      return CompletableFuture.completedFuture(image)
+    }
+
+    // Rebuilding under the same tag would leave the stale image behind, 1.4 GB each time. A container still using it keeps it.
+    if (builtAt != null) {
+      runCatching { docker.removeImageCmd(image).exec() }
+    }
+    println("Building the AWS Emulator image $image")
+    return ImageFromDockerfile(image, false)
+      .withFileFromClasspath("Dockerfile", DOCKERFILE)
+      .withBuildArg("EMULATOR_ARCH", architecture)
   }
 
   private fun emulatorArchitecture(): String = when (val arch = System.getProperty("os.arch")) {

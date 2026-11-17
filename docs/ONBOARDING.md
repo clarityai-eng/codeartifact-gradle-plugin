@@ -257,7 +257,8 @@ reaches build scans, caches and logs. What the plugin does guarantee, all verifi
   `Getting token for <url> in profile <p>` — the failure *is* the assertion that AWS was reached.
 - **Integration tests** (`src/integrationTest`) send real token requests to
   [AWS Emulator](https://github.com/aws/aws-emulator), started once per run with Testcontainers
-  from `src/integrationTest/resources/aws-emulator/Dockerfile`. They call `TokenFactory` directly
+  from `src/integrationTest/resources/aws-emulator/Dockerfile`. The image is reused for a day,
+  because building it downloads the whole emulator package again. They call `TokenFactory` directly
   and run TestKit builds. The emulator checks SigV4 signatures and rejects any key pair but the
   one it generated, so a successful build proves which credentials signed the request.
 - Three things about the emulator that are not obvious from its documentation:
