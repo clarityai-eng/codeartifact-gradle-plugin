@@ -73,6 +73,9 @@ configurations["functionalTestRuntimeOnly"].extendsFrom(configurations["testRunt
 
 // Add a task to run the functional tests
 val functionalTest = tasks.register<Test>("functionalTest") {
+  group = LifecycleBasePlugin.VERIFICATION_GROUP
+  description = "Runs the functional tests: Gradle TestKit builds across the supported Gradle versions."
+
   testClassesDirs = functionalTestSourceSet.output.classesDirs
   classpath = functionalTestSourceSet.runtimeClasspath
   useJUnitPlatform()
@@ -94,8 +97,11 @@ dependencies {
   "integrationTestImplementation"(libs.testcontainers)
 }
 
-// Add a task to run the integration tests. It needs a running Docker daemon.
+// Add a task to run the integration tests
 val integrationTest = tasks.register<Test>("integrationTest") {
+  group = LifecycleBasePlugin.VERIFICATION_GROUP
+  description = "Runs the integration tests against AWS Emulator. Needs a running Docker daemon."
+
   testClassesDirs = integrationTestSourceSet.output.classesDirs
   classpath = integrationTestSourceSet.runtimeClasspath
   useJUnitPlatform()
