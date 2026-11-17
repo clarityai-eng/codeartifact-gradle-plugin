@@ -80,9 +80,37 @@ val functionalTest = tasks.register<Test>("functionalTest") {
 
 gradlePlugin.testSourceSets.add(functionalTestSourceSet)
 
+// Add a source set for the integration test suite, which runs against AWS Emulator in Docker
+val integrationTestSourceSet = sourceSets.create("integrationTest") {
+  // TokenFactory is exercised in-process, not only through TestKit builds
+  compileClasspath += sourceSets.main.get().output
+  runtimeClasspath += sourceSets.main.get().output
+}
+
+configurations["integrationTestImplementation"].extendsFrom(configurations["testImplementation"])
+configurations["integrationTestRuntimeOnly"].extendsFrom(configurations["testRuntimeOnly"])
+
+dependencies {
+  "integrationTestImplementation"(libs.testcontainers)
+}
+
+// Add a task to run the integration tests. It needs a running Docker daemon.
+val integrationTest = tasks.register<Test>("integrationTest") {
+  testClassesDirs = integrationTestSourceSet.output.classesDirs
+  classpath = integrationTestSourceSet.runtimeClasspath
+  useJUnitPlatform()
+  shouldRunAfter(tasks.named("test"), functionalTest)
+
+  // The emulator rejects real credentials, but a test that missed the emulator would send them to AWS:
+  // none of the developer's or the CI's AWS settings reach the tests
+  environment = environment.filterKeys { !it.startsWith("AWS_") && !it.startsWith("CODEARTIFACT_") }
+}
+
+gradlePlugin.testSourceSets.add(integrationTestSourceSet)
+
 tasks.named<Task>("check") {
-  // Run the functional tests as part of `check`
-  dependsOn(functionalTest)
+  // Run the functional and integration tests as part of `check`
+  dependsOn(functionalTest, integrationTest)
 }
 
 tasks.named<Test>("test") {
