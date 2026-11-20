@@ -81,8 +81,9 @@ private fun RepositoryHandler.codeartifactRepository(
   @Suppress("UNCHECKED_CAST")
   val serviceProvider = ext["codeartifactServiceProvider"] as Provider<CodeArtifactToken>
   val settings = ext["codeartifactSettingLookup"] as SettingLookup
+  val profileTokens = ext["codeartifactProfileTokens"] as ProfileTokens
   val token = CodeArtifactAuthenticator.getToken(
-    serviceProvider.get(), logger, settings, repoUrl, credentials, profile, DEFAULT_PROFILE
+    serviceProvider.get(), profileTokens, logger, settings, repoUrl, credentials, profile, DEFAULT_PROFILE
   )
   maven { mavenRepo ->
     mavenRepo.url = URI(repoUrl)

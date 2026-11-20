@@ -15,10 +15,15 @@ import org.gradle.testfixtures.ProjectBuilder
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import software.amazon.awssdk.services.codeartifact.model.GetAuthorizationTokenResponse
+import java.io.File
 import java.net.URI
 
 class CodeArtifactSettingsPluginTest {
+
+  @TempDir
+  lateinit var gradleUserHome: File
 
   @AfterEach
   fun tearDown() {
@@ -44,6 +49,7 @@ class CodeArtifactSettingsPluginTest {
     val codeArtifactToken = CodeArtifactToken()
 
     every { settings.gradle } returns gradle
+    every { gradle.gradleUserHomeDir } returns gradleUserHome
     every { gradle.sharedServices } returns buildServiceRegistry
     every {
       buildServiceRegistry.registerIfAbsent(
@@ -105,6 +111,7 @@ class CodeArtifactSettingsPluginTest {
     val codeArtifactToken = CodeArtifactToken()
 
     every { settings.gradle } returns gradle
+    every { gradle.gradleUserHomeDir } returns gradleUserHome
     every { gradle.sharedServices } returns buildServiceRegistry
     every {
       buildServiceRegistry.registerIfAbsent(
@@ -159,6 +166,7 @@ class CodeArtifactSettingsPluginTest {
     val serviceProvider = mockk<Provider<CodeArtifactToken>>(relaxed = true)
 
     every { settings.gradle } returns gradle
+    every { gradle.gradleUserHomeDir } returns gradleUserHome
     every { gradle.sharedServices } returns buildServiceRegistry
     every {
       buildServiceRegistry.registerIfAbsent(
@@ -216,6 +224,7 @@ class CodeArtifactSettingsPluginTest {
     val serviceProvider = mockk<Provider<CodeArtifactToken>>(relaxed = true)
 
     every { settings.gradle } returns gradle
+    every { gradle.gradleUserHomeDir } returns gradleUserHome
     every { gradle.sharedServices } returns buildServiceRegistry
     every {
       buildServiceRegistry.registerIfAbsent(
@@ -266,6 +275,7 @@ class CodeArtifactSettingsPluginTest {
     val codeArtifactToken = CodeArtifactToken()
 
     every { settings.gradle } returns gradle
+    every { gradle.gradleUserHomeDir } returns gradleUserHome
     every { gradle.sharedServices } returns buildServiceRegistry
     every {
       buildServiceRegistry.registerIfAbsent(
@@ -331,6 +341,7 @@ class CodeArtifactSettingsPluginTest {
     val codeArtifactToken = CodeArtifactToken()
 
     every { settings.gradle } returns gradle
+    every { gradle.gradleUserHomeDir } returns gradleUserHome
     every { gradle.sharedServices } returns buildServiceRegistry
     every {
       buildServiceRegistry.registerIfAbsent(

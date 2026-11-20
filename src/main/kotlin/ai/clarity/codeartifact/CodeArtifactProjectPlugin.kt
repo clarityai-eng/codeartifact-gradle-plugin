@@ -30,13 +30,14 @@ internal class CodeArtifactProjectPlugin : Plugin<Project> {
     ) {}
 
     val settings = SettingLookup.of(project.providers, project.logger)
+    val profileTokens = ProfileTokens.of(project.providers, project.gradle.gradleUserHomeDir)
 
-    CodeartifactRepositoryConfigurer.configure(project.repositories, project.logger, serviceProvider, settings)
+    CodeartifactRepositoryConfigurer.configure(project.repositories, project.logger, serviceProvider, profileTokens, settings)
 
     project.plugins.withId("maven-publish") {
       val publishing = project.extensions.findByType(PublishingExtension::class.java)
       publishing?.repositories?.let {
-        CodeartifactRepositoryConfigurer.configure(it, project.logger, serviceProvider, settings)
+        CodeartifactRepositoryConfigurer.configure(it, project.logger, serviceProvider, profileTokens, settings)
       }
     }
   }

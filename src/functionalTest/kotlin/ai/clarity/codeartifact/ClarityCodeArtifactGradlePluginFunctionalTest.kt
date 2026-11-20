@@ -25,11 +25,16 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.DisabledOnOs
+import org.junit.jupiter.api.condition.OS
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
 import java.io.File
 import java.net.InetSocketAddress
+import java.time.Duration
+import java.time.Instant
+import java.util.concurrent.atomic.AtomicInteger
 
 private const val codeArtifactUrl =
   "https://my-domain-111122223333.d.codeartifact.us-west-2.amazonaws.com/maven/my-repo/"
@@ -931,5 +936,117 @@ class ClarityCodeartifactPluginFunctionalTest {
           "AWS_SESSION_TOKEN"
         )
       ) + entries
+  }
+
+  // The AWS SDK starts the credential_process through a shell, which the test writes as a POSIX script
+  @Nested
+  @DisabledOnOs(OS.WINDOWS)
+  inner class ConfigurationCacheFunctionalTest {
+
+    @TempDir
+    lateinit var projectDir: File
+
+    private val buildFile by lazy { File(projectDir, "build.gradle.kts") }
+    private val settingsFile by lazy { File(projectDir, "settings.gradle.kts") }
+
+    private val requests = AtomicInteger()
+    private var firstTokenLifetime = Duration.ofHours(12)
+    private lateinit var server: HttpServer
+
+    @BeforeEach
+    fun setUp() {
+      settingsFile.writeText("""rootProject.name = "test-configuration-cache"""")
+      buildFile.writeText(
+        """
+        plugins {
+            id("ai.clarity.codeartifact")
+        }
+
+        repositories {
+            maven {
+                url = uri("$codeArtifactUrl")
+            }
+        }
+        """.trimIndent()
+      )
+      // Hands out a different token on every request, so a refetch is visible to the configuration cache
+      server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+        createContext("/") { exchange ->
+          val count = requests.incrementAndGet()
+          val lifetime = if (count == 1) firstTokenLifetime else Duration.ofHours(12)
+          val expiration = Instant.now().plus(lifetime).epochSecond
+          val bytes = """{"authorizationToken":"stub-token-$count","expiration":$expiration}""".toByteArray()
+          exchange.responseHeaders.add("Content-Type", "application/json")
+          exchange.sendResponseHeaders(200, bytes.size.toLong())
+          exchange.responseBody.use { it.write(bytes) }
+        }
+        start()
+      }
+    }
+
+    @AfterEach
+    fun tearDown() {
+      server.stop(0)
+    }
+
+    @Test
+    fun `a credential_process profile is configuration cache compatible and the entry is reused`() {
+      val first = runner().build()
+      val second = runner().build()
+
+      assertThat(first.output).contains("Configuration cache entry stored.")
+      assertThat(first.output).doesNotContain("problem was found", "problems were found")
+      assertThat(second.output).contains("Configuration cache entry reused.")
+      assertThat(requests.get()).isEqualTo(1)
+    }
+
+    @Test
+    fun `a token close to expiring is refetched instead of being replayed from the configuration cache`() {
+      firstTokenLifetime = Duration.ofMinutes(5)
+
+      runner().build()
+      val second = runner().build()
+
+      val third = runner().build()
+
+      assertThat(second.output).contains("cannot be reused because a build logic input of type 'CodeArtifactTokenSource' has changed")
+      assertThat(third.output).contains("Configuration cache entry reused.")
+      assertThat(requests.get()).isEqualTo(2)
+    }
+
+    private fun runner(): GradleRunner {
+      val credentialProcess = File(projectDir, "credential-process.sh").apply {
+        writeText(
+          """
+          #!/bin/sh
+          echo '{"Version":1,"AccessKeyId":"test-access-key","SecretAccessKey":"test-secret-key"}'
+          """.trimIndent()
+        )
+        setExecutable(true)
+      }
+      val awsConfig = File(projectDir, "aws-config").apply {
+        writeText(
+          """
+          [profile process]
+          credential_process = ${credentialProcess.absolutePath}
+          region = us-west-2
+          """.trimIndent()
+        )
+      }
+      val environment = System.getenv().minus(
+        setOf("AWS_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN")
+      ) + mapOf(
+        "AWS_CONFIG_FILE" to awsConfig.absolutePath,
+        "AWS_SHARED_CREDENTIALS_FILE" to File(projectDir, "aws-credentials").absolutePath,
+        "AWS_ENDPOINT_URL_CODEARTIFACT" to "http://127.0.0.1:${server.address.port}",
+        "CODEARTIFACT_PROFILE" to "process",
+      )
+      return GradleRunner.create()
+        .forwardOutput()
+        .withPluginClasspath()
+        .withProjectDir(projectDir)
+        .withEnvironment(environment)
+        .withArguments("help", "--configuration-cache")
+    }
   }
 }

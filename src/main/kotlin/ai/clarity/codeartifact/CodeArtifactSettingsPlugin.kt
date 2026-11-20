@@ -31,10 +31,11 @@ internal class CodeArtifactSettingsPlugin : Plugin<Settings> {
 
     val logger = Logging.getLogger(Settings::class.java)
     val lookup = SettingLookup.of(settings.providers, logger)
+    val profileTokens = ProfileTokens.of(settings.providers, settings.gradle.gradleUserHomeDir)
 
-    CodeartifactRepositoryConfigurer.configure(settings.pluginManagement.repositories, logger, serviceProvider, lookup)
+    CodeartifactRepositoryConfigurer.configure(settings.pluginManagement.repositories, logger, serviceProvider, profileTokens, lookup)
     CodeartifactRepositoryConfigurer.configure(
-      settings.dependencyResolutionManagement.repositories, logger, serviceProvider, lookup
+      settings.dependencyResolutionManagement.repositories, logger, serviceProvider, profileTokens, lookup
     )
   }
 }
