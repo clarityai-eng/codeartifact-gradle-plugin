@@ -234,14 +234,19 @@ reaches build scans, caches and logs. What the plugin does guarantee, all verifi
 - the token cache key hashes the credentials (SHA-256) instead of holding them in clear, and
   profile entries never collide with service-credential entries;
 - a failing token request at `--debug --stacktrace` produced 6249 log lines with **0**
-  occurrences of the secret and 0 of the unmasked access key id.
+  occurrences of the secret and 0 of the unmasked access key id. That no longer holds for the
+  access key id: when the token request is actually sent, the SDK's HTTP client (Apache
+  HttpClient 5) logs its `Authorization` header at `--debug`, and the SigV4 credential scope in
+  it carries the unmasked access key id. The secret still never appears (verified against AWS
+  Emulator, 2026-11-17, SDK 2.57.8).
 
 ## 6. Testing
 
 ```bash
-./gradlew test --rerun-tasks            # 105 tests, all green
-./gradlew functionalTest --rerun-tasks  # 106 tests, all green
-./gradlew build                         # both + validatePlugins; ~4m from clean
+./gradlew test --rerun-tasks             # 105 tests, all green
+./gradlew functionalTest --rerun-tasks   # 101 tests, all green
+./gradlew integrationTest --rerun-tasks  # 12 tests, all green; needs Docker
+./gradlew build                          # all three + validatePlugins
 ```
 
 - **Unit tests** use `ProjectBuilder` / `ProjectBuilder`-backed settings and
@@ -250,12 +255,20 @@ reaches build scans, caches and logs. What the plugin does guarantee, all verifi
 - **Functional tests** (`src/functionalTest`) run real builds via `GradleRunner` across
   `8.4, 8.7, 8.14, 9.1.0, 9.4.0`. Most assert on `buildAndFail()` plus the `--info` line
   `Getting token for <url> in profile <p>` — the failure *is* the assertion that AWS was reached.
-- One functional test (`TokenEndpointFunctionalTest`) starts a `com.sun.net.httpserver.HttpServer`
-  returning `{"authorizationToken":"stub-token"}` and points the SDK at it with
-  `AWS_ENDPOINT_URL_CODEARTIFACT`, so it can assert the injected credentials for real. Reuse
-  that trick for any manual end-to-end check.
+- **Integration tests** (`src/integrationTest`) send real token requests to
+  [AWS Emulator](https://github.com/aws/aws-emulator), started once per run with Testcontainers
+  from `src/integrationTest/resources/aws-emulator/Dockerfile`. The image is reused for a day,
+  because building it downloads the whole emulator package again. They call `TokenFactory` directly
+  and run TestKit builds. The emulator checks SigV4 signatures and rejects any key pair but the
+  one it generated, so a successful build proves which credentials signed the request.
+- Three things about the emulator that are not obvious from its documentation:
+  - it serves HTTPS with a certificate generated at each start, so `AwsEmulator` copies it into
+    a trust store and hands it to the TestKit daemon through `org.gradle.jvmargs`;
+  - for an IP address with a port other than its own (Docker publishes a random one), it cannot
+    tell which service a request is for and answers `404 UnknownService`; use `localhost`;
+  - it keeps one set of resources for every region, and acts as the account `000000000000`.
 
-Beware: `test`/`functionalTest` cache aggressively. A green `build` that reports `UP-TO-DATE`
+Beware: `test`/`functionalTest`/`integrationTest` cache aggressively. A green `build` that reports `UP-TO-DATE`
 proves nothing about the current sources — pass `--rerun-tasks`.
 
 ### Manual end-to-end check without AWS
@@ -273,6 +286,11 @@ AWS_SHARED_CREDENTIALS_FILE=/tmp/creds AWS_REGION=us-west-2 \
 
 Set `AWS_SHARED_CREDENTIALS_FILE` to a throwaway file with fake keys when you exercise a named
 profile, since `ProfileCredentialsProvider` bypasses `AWS_ACCESS_KEY_ID`.
+
+A stub accepts any request, signed or not. To check that the right credentials sign it, run the
+check against AWS Emulator instead, as the integration tests do: build the image from
+`src/integrationTest/resources/aws-emulator/Dockerfile` and follow AWS's
+[Getting started with Docker](https://docs.aws.amazon.com/emulator/latest/userguide/getting-started-docker.html).
 
 ## 7. Compatibility
 
